@@ -267,13 +267,9 @@ std::vector<BenchmarkResult> run_all_int_benchmarks(int num_power) {
     results.push_back(benchmark_int_keys<CuckooHashMapWrapper<uint64_t, uint64_t>>(
         "libcuckoo::cuckoohash_map", keys));
     
-    // CLHT-LB (Lock-Based Cache-Line Hash Table)
-    results.push_back(benchmark_int_keys<ClhtLbWrapper>(
-        "CLHT-LB", keys));
-    
-    // CLHT-LF (Lock-Free Cache-Line Hash Table)
-    results.push_back(benchmark_int_keys<ClhtLfWrapper>(
-        "CLHT-LF", keys));
+    // CLHT (Lock-Based and Lock-Free hash tables)
+    results.push_back(benchmark_int_keys<ClhtLbWrapper>("CLHT-LB", keys));
+    results.push_back(benchmark_int_keys<ClhtLfWrapper>("CLHT-LF", keys));
     
     // OPIC Robin Hood Hash
     results.push_back(benchmark_int_keys<OpicRobinHoodWrapper>(
@@ -320,8 +316,8 @@ void print_help(const char* program) {
         "  rhashmap             - rhashmap (C Robin Hood hash)\n"
         "  phmap_flat           - phmap::flat_hash_map\n"
         "  phmap_parallel       - phmap::parallel_flat_hash_map\n"
-        "  CLHT-LB              - Cache-Line Hash Table (Lock-Based, int keys only)\n"
-        "  CLHT-LF              - Cache-Line Hash Table (Lock-Free, int keys only)\n"
+        "  CLHT_LB              - CLHT Lock-Based (int keys only)\n"
+        "  CLHT_LF              - CLHT Lock-Free (int keys only)\n"
         "  OPIC                 - OPIC Robin Hood Hash (int keys only)\n"
         << std::endl;
 }

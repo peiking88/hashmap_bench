@@ -20,7 +20,7 @@
 
 // rhashmap (C library)
 extern "C" {
-#include <rhashmap/rhashmap.h>
+#include <rhashmap.h>
 }
 
 // Boost.Container
@@ -29,23 +29,23 @@ extern "C" {
 // libcuckoo
 #include <libcuckoo/cuckoohash_map.hh>
 
-// OPIC Robin Hood Hash
-extern "C" {
-#include <opic/op_hash_table.h>
-#include <opic/op_malloc.h>
-#include <opic/op_hash.h>
-}
-
 // parallel-hashmap
 #include <parallel_hashmap/phmap.h>
 
 // Folly F14 (minimal build)
 #include <folly/container/F14Map.h>
 
-// CLHT (Cache-Line Hash Table) - lock-based and lock-free versions
+// OPIC Robin Hood Hash
 extern "C" {
-#include <clht/clht.h>
-#include <ssmem/ssmem.h>
+#include <opic/op_malloc.h>
+#include <opic/hash/op_hash_table.h>
+#include <opic/hash/op_hash.h>
+}
+
+// CLHT (lock-based and lock-free hash tables)
+extern "C" {
+#include <clht.h>
+#include <ssmem.h>
 }
 
 #include "benchmark.hpp"
@@ -244,41 +244,6 @@ public:
 };
 
 // ============================================================================
-// OPIC Robin Hood Hash wrapper
-// Only supports integer keys
-// ============================================================================
-class OpicRobinHoodWrapper {
-public:
-    struct Context {
-        OPHeap* heap;
-        OPHashTable* table;
-    };
-    using Map = Context*;
-
-    static Map create(size_t capacity) {
-        Context* ctx = new Context();
-        ctx->heap = OPHeapOpenTmp();
-        ctx->table = HTNew(ctx->heap, capacity, 0.95, sizeof(uint64_t), sizeof(uint64_t));
-        return ctx;
-    }
-    static void insert(Map& ctx, uint64_t k, uint64_t v) {
-        bool is_dup = false;
-        HTUpsertCustom(ctx->table, OPDefaultHash, &k,
-                       reinterpret_cast<void**>(&v), &is_dup);
-    }
-    static uint64_t lookup(Map& ctx, uint64_t k) {
-        uint64_t* val = reinterpret_cast<uint64_t*>(
-            HTGetCustom(ctx->table, OPDefaultHash, &k));
-        return val ? *val : 0;
-    }
-    static void destroy(Map& ctx) {
-        HTDestroy(ctx->table);
-        OPHeapClose(ctx->heap);
-        delete ctx;
-    }
-};
-
-// ============================================================================
 // phmap::flat_hash_map wrapper (parallel-hashmap)
 // ============================================================================
 template <typename Key, typename Value>
@@ -315,56 +280,81 @@ public:
 };
 
 // ============================================================================
-// CLHT-LB (Cache-Line Hash Table - Lock-Based) wrapper
-// Only supports integer keys (clht_addr_t = uintptr_t)
+// OPIC Robin Hood Hash wrapper
+// Only supports integer keys
+// ============================================================================
+class OpicRobinHoodWrapper {
+public:
+    struct Context {
+        OPHeap* heap;
+        OPHashTable* table;
+    };
+    using Map = Context*;
+
+    static Map create(size_t capacity) {
+        Context* ctx = new Context();
+        ctx->heap = OPHeapOpenTmp();
+        ctx->table = HTNew(ctx->heap, capacity, 0.95, sizeof(uint64_t), sizeof(uint64_t));
+        return ctx;
+    }
+    static void insert(Map& ctx, uint64_t k, uint64_t v) {
+        bool is_dup = false;
+        HTUpsertCustom(ctx->table, OPDefaultHash, &k,
+                       reinterpret_cast<void**>(&v), &is_dup);
+    }
+    static uint64_t lookup(Map& ctx, uint64_t k) {
+        uint64_t* val = reinterpret_cast<uint64_t*>(
+            HTGetCustom(ctx->table, OPDefaultHash, &k));
+        return val ? *val : 0;
+    }
+    static void destroy(Map& ctx) {
+        HTDestroy(ctx->table);
+        OPHeapClose(ctx->heap);
+        delete ctx;
+    }
+};
+
+// ============================================================================
+// CLHT wrappers (Lock-Based and Lock-Free hash tables)
+// Only supports integer keys (uintptr_t)
 // ============================================================================
 class ClhtLbWrapper {
 public:
     using Map = clht_t*;
     
     static Map create(size_t capacity) {
-        // CLHT uses number of buckets, not elements
-        // Each bucket holds ENTRIES_PER_BUCKET (3) entries
-        size_t num_buckets = (capacity + ENTRIES_PER_BUCKET - 1) / ENTRIES_PER_BUCKET;
-        clht_t* ht = clht_create(num_buckets);
-        // Initialize GC thread for single-threaded use
+        clht_t* ht = clht_create(capacity);
         clht_gc_thread_init(ht, 0);
         return ht;
     }
-    static void insert(Map& m, uint64_t k, uint64_t v) {
-        clht_put(m, static_cast<clht_addr_t>(k), static_cast<clht_val_t>(v));
+    static void insert(Map& ht, uint64_t k, uint64_t v) {
+        clht_put(ht, (clht_addr_t)k, (clht_val_t)v);
     }
-    static uint64_t lookup(Map& m, uint64_t k) {
-        return static_cast<uint64_t>(clht_get(m->ht, static_cast<clht_addr_t>(k)));
+    static uint64_t lookup(Map& ht, uint64_t k) {
+        return (uint64_t)clht_get(ht->ht, (clht_addr_t)k);
     }
-    static void destroy(Map& m) {
-        clht_gc_destroy(m);
+    static void destroy(Map& ht) {
+        clht_gc_destroy(ht);
     }
 };
 
-// ============================================================================
-// CLHT-LF (Cache-Line Hash Table - Lock-Free) wrapper
-// Only supports integer keys (clht_addr_t = uintptr_t)
-// Note: We use the same clht.h interface but link against clht_lf library
-// ============================================================================
 class ClhtLfWrapper {
 public:
     using Map = clht_t*;
     
     static Map create(size_t capacity) {
-        size_t num_buckets = (capacity + ENTRIES_PER_BUCKET - 1) / ENTRIES_PER_BUCKET;
-        clht_t* ht = clht_create(num_buckets);
+        clht_t* ht = clht_create(capacity);
         clht_gc_thread_init(ht, 0);
         return ht;
     }
-    static void insert(Map& m, uint64_t k, uint64_t v) {
-        clht_put(m, static_cast<clht_addr_t>(k), static_cast<clht_val_t>(v));
+    static void insert(Map& ht, uint64_t k, uint64_t v) {
+        clht_put(ht, (clht_addr_t)k, (clht_val_t)v);
     }
-    static uint64_t lookup(Map& m, uint64_t k) {
-        return static_cast<uint64_t>(clht_get(m->ht, static_cast<clht_addr_t>(k)));
+    static uint64_t lookup(Map& ht, uint64_t k) {
+        return (uint64_t)clht_get(ht->ht, (clht_addr_t)k);
     }
-    static void destroy(Map& m) {
-        clht_gc_destroy(m);
+    static void destroy(Map& ht) {
+        clht_gc_destroy(ht);
     }
 };
 
