@@ -6,6 +6,10 @@
  * Strategy:
  * - Insert/Remove: SERIAL (CLHT bucket locks limit parallel scaling)
  * - Lookup: PARALLEL (lock-free reads scale near-linearly)
+ *
+ * CRITICAL FIX: CLHT's GC uses global clht_alloc pointer, causing double-free
+ * when multiple instances are created/destroyed. We use reference counting to
+ * ensure only the last instance calls clht_gc_destroy.
  */
 
 extern "C" {
@@ -22,6 +26,19 @@ extern "C" {
 #include <memory>
 
 namespace clht_libfork {
+
+// Global reference counter for CLHT instances
+// CLHT's GC uses global clht_alloc, so we need to track instances
+inline std::atomic<int>& get_clht_instance_count() {
+    static std::atomic<int> count{0};
+    return count;
+}
+
+// Flag to track if GC has been initialized for this thread
+inline std::atomic<bool>& get_gc_initialized() {
+    static std::atomic<bool> initialized{false};
+    return initialized;
+}
 
 namespace impl {
 
@@ -66,11 +83,14 @@ inline constexpr lookup_int_overload lookup_int = {};
  * Parallel CLHT Integer Key Implementation
  * 
  * Optimized: Insert/Remove are SERIAL, Lookup is PARALLEL
+ * 
+ * WARNING: Due to CLHT's global GC state, only ONE instance should exist
+ * at a time. Creating multiple instances concurrently will cause memory issues.
  */
 class ParallelClhtInt {
 public:
     explicit ParallelClhtInt(size_t capacity = 1024, size_t num_threads = 0)
-        : capacity_(capacity) {
+        : capacity_(capacity), owns_gc_(false) {
         if (num_threads == 0) {
             num_threads = std::thread::hardware_concurrency();
         }
@@ -79,14 +99,32 @@ public:
 
         ht_ = clht_create(capacity);
 
-        // Initialize GC for each thread (required for CLHT)
-        for (size_t i = 0; i < num_threads; ++i) {
-            clht_gc_thread_init(ht_, static_cast<int>(i));
+        // Increment instance counter
+        int prev_count = get_clht_instance_count().fetch_add(1);
+        
+        // Only initialize GC for the first instance
+        // This avoids the double-free problem with clht_alloc
+        if (prev_count == 0) {
+            owns_gc_ = true;
+            // Initialize GC for each thread (required for CLHT)
+            for (size_t i = 0; i < num_threads; ++i) {
+                clht_gc_thread_init(ht_, static_cast<int>(i));
+            }
         }
     }
 
     ~ParallelClhtInt() {
-        clht_gc_destroy(ht_);
+        // Only destroy GC if we own it (first instance)
+        // and we're the last instance being destroyed
+        int new_count = get_clht_instance_count().fetch_sub(1) - 1;
+        
+        if (owns_gc_ && new_count == 0) {
+            clht_gc_destroy(ht_);
+        } else {
+            // Just free the hashtable memory without full GC destroy
+            // to avoid double-free of clht_alloc
+            free(ht_);
+        }
     }
 
     // Disable copy
@@ -110,7 +148,7 @@ public:
         return clht_size(ht_->ht);
     }
 
-    // SERIALIZD batch insert (bucket locks limit parallel scaling)
+    // SERIAL batch insert (bucket locks limit parallel scaling)
     void batch_insert(const std::vector<uintptr_t>& keys,
                       const std::vector<uintptr_t>& values);
 
@@ -136,6 +174,7 @@ private:
     size_t capacity_;
     size_t num_threads_;
     std::unique_ptr<lf::lazy_pool> pool_;
+    bool owns_gc_;  // True if this instance owns the GC initialization
 };
 
 // SERIAL insert - CLHT bucket locks limit parallel scaling
