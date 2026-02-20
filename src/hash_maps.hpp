@@ -52,9 +52,8 @@ extern "C" {
 #include "clht_string/clht_str_ptr.hpp"
 #include "clht_string/clht_str_inline.hpp"
 #include "clht_string/clht_str_pooled.hpp"
-#include "clht_string/clht_str_f14.hpp"
-#include "clht_string/clht_str_f14v2.hpp"
 #include "clht_string/clht_str_tagged.hpp"
+#include "clht_string/clht_str_final.hpp"
 
 #include "benchmark.hpp"
 
@@ -429,50 +428,31 @@ public:
     }
 };
 
-class ClhtStrF14Wrapper {
-public:
-    using Map = clht_str::ClhtStrF14*;
-    
-    static Map create(size_t capacity) {
-        return new clht_str::ClhtStrF14(capacity * 2);
-    }
-    static void insert(Map& ht, const std::string& k, uint64_t v) {
-        ht->insert(k, v);
-    }
-    static uint64_t lookup(Map& ht, const std::string& k) {
-        uintptr_t val = ht->lookup(k);
-        return (val == UINTPTR_MAX) ? 0 : val;
-    }
-    static void destroy(Map& ht) {
-        delete ht;
-    }
-};
-
-class ClhtStrF14V2Wrapper {
-public:
-    using Map = clht_str::ClhtStrF14V2*;
-    
-    static Map create(size_t capacity) {
-        return new clht_str::ClhtStrF14V2(capacity * 2);
-    }
-    static void insert(Map& ht, const std::string& k, uint64_t v) {
-        ht->insert(k, v);
-    }
-    static uint64_t lookup(Map& ht, const std::string& k) {
-        uintptr_t val = ht->lookup(k);
-        return (val == UINTPTR_MAX) ? 0 : val;
-    }
-    static void destroy(Map& ht) {
-        delete ht;
-    }
-};
-
 class ClhtStrTaggedWrapper {
 public:
     using Map = clht_str::ClhtStrTagged*;
     
     static Map create(size_t capacity) {
         return new clht_str::ClhtStrTagged(capacity * 2);
+    }
+    static void insert(Map& ht, const std::string& k, uint64_t v) {
+        ht->insert(k, v);
+    }
+    static uint64_t lookup(Map& ht, const std::string& k) {
+        uintptr_t val = ht->lookup(k);
+        return (val == UINTPTR_MAX) ? 0 : val;
+    }
+    static void destroy(Map& ht) {
+        delete ht;
+    }
+};
+
+class ClhtStrFinalWrapper {
+public:
+    using Map = clht_str::ClhtStrFinal*;
+    
+    static Map create(size_t capacity) {
+        return new clht_str::ClhtStrFinal(capacity * 2);
     }
     static void insert(Map& ht, const std::string& k, uint64_t v) {
         ht->insert(k, v);

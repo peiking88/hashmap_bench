@@ -223,12 +223,10 @@ std::vector<BenchmarkResult> run_all_string_benchmarks(
         "CLHT-Str-Inline", key_type, keys));
     results.push_back(benchmark_string_keys<ClhtStrPooledWrapper>(
         "CLHT-Str-Pooled", key_type, keys));
-    results.push_back(benchmark_string_keys<ClhtStrF14Wrapper>(
-        "CLHT-Str-F14", key_type, keys));
-    results.push_back(benchmark_string_keys<ClhtStrF14V2Wrapper>(
-        "CLHT-Str-F14V2", key_type, keys));
     results.push_back(benchmark_string_keys<ClhtStrTaggedWrapper>(
         "CLHT-Str-Tagged", key_type, keys));
+    results.push_back(benchmark_string_keys<ClhtStrFinalWrapper>(
+        "CLHT-Str-Final", key_type, keys));
     
     print_results(results);
     return results;
