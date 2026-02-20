@@ -1,0 +1,30 @@
+[submodule "external/abseil-cpp"]
+	path = external/abseil-cpp
+	url = https://bgithub.xyz/abseil/abseil-cpp.git
+[submodule "external/Catch2"]
+	path = external/Catch2
+	url = https://bgithub.xyz/catchorg/Catch2.git
+[submodule "external/container"]
+	path = external/container
+	url = https://bgithub.xyz/boostorg/container.git
+[submodule "external/folly"]
+	path = external/folly
+	url = https://bgithub.xyz/facebook/folly.git
+[submodule "external/NanoLog"]
+	path = external/NanoLog
+	url = https://bgithub.xyz/PlatformLab/NanoLog.git
+[submodule "external/parallel-hashmap"]
+	path = external/parallel-hashmap
+	url = https://bgithub.xyz/greg7mdp/parallel-hashmap.git
+[submodule "external/cista"]
+	path = external/cista
+	url = https://github.com/felixguendling/cista.git
+[submodule "external/clht"]
+	path = external/clht
+	url = https://github.com/LPD-EPFL/CLHT.git
+[submodule "external/libcuckoo"]
+	path = external/libcuckoo
+	url = https://github.com/efficient/libcuckoo.git
+[submodule "external/sparsehash"]
+	path = external/sparsehash
+	url = https://github.com/sparsehash/sparsehash.git
