@@ -28,3 +28,9 @@
 [submodule "external/sparsehash"]
 	path = external/sparsehash
 	url = https://github.com/sparsehash/sparsehash.git
+[submodule "external/opic"]
+	path = external/opic
+	url = https://bgithub.xyz/dryman/opic
+[submodule "external/rhashmap"]
+	path = external/rhashmap
+	url = https://bgithub.xyz/rmind/rhashmap
