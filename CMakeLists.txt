@@ -220,6 +220,12 @@ target_include_directories(hashmap_bench_test PRIVATE
     ${EXTERNAL_DIR}/opic           # for OPIC headers
 )
 
+target_compile_options(hashmap_bench_test PRIVATE
+    -march=native
+    -msse4.2
+    -mavx2
+)
+
 target_link_libraries(hashmap_bench_test PRIVATE
     Catch2::Catch2WithMain
     nanolog
@@ -241,6 +247,142 @@ target_link_libraries(hashmap_bench_test PRIVATE
 
 enable_testing()
 add_test(NAME hashmap_bench_test COMMAND hashmap_bench_test)
+
+# ============================================================================
+# CLHT String Tests
+# ============================================================================
+add_executable(clht_string_test
+    test/clht_string_test.cpp
+)
+
+target_include_directories(clht_string_test PRIVATE
+    ${SRC_DIR}
+    ${EXTERNAL_DIR}/stub_includes
+    ${EXTERNAL_DIR}/opic
+    ${EXTERNAL_DIR}/sparsehash/src
+)
+
+target_compile_options(clht_string_test PRIVATE
+    -march=native
+    -msse4.2
+    -mavx2
+)
+
+target_link_libraries(clht_string_test PRIVATE
+    Catch2::Catch2WithMain
+    folly_f14_minimal
+    clht_lb
+    clht_lf
+    absl::flat_hash_map
+    sparsehash
+    atomic
+    pthread
+)
+
+add_test(NAME clht_string_test COMMAND clht_string_test)
+
+# ============================================================================
+# CLHT Benchmark Tests
+# ============================================================================
+add_executable(clht_benchmark_test
+    test/clht_benchmark_test.cpp
+)
+
+target_include_directories(clht_benchmark_test PRIVATE
+    ${SRC_DIR}
+    ${EXTERNAL_DIR}/stub_includes
+    ${EXTERNAL_DIR}/opic
+    ${EXTERNAL_DIR}/sparsehash/src
+)
+
+target_compile_options(clht_benchmark_test PRIVATE
+    -march=native
+    -msse4.2
+    -mavx2
+)
+
+target_link_libraries(clht_benchmark_test PRIVATE
+    Catch2::Catch2WithMain
+    folly_f14_minimal
+    clht_lb
+    clht_lf
+    absl::flat_hash_map
+    sparsehash
+    atomic
+    pthread
+)
+
+add_test(NAME clht_benchmark_test COMMAND clht_benchmark_test --benchmark-samples 10 "[clht]")
+
+# ============================================================================
+# CLHT Integer Key Tests
+# ============================================================================
+add_executable(clht_int_test
+    test/clht_int_test.cpp
+)
+
+target_include_directories(clht_int_test PRIVATE
+    ${SRC_DIR}
+    ${EXTERNAL_DIR}/stub_includes
+    ${EXTERNAL_DIR}/clht/include
+    ${EXTERNAL_DIR}/ssmem/include
+    ${EXTERNAL_DIR}/sspfd
+)
+
+target_compile_options(clht_int_test PRIVATE
+    -march=native
+    -msse4.2
+    -mavx2
+)
+
+target_link_libraries(clht_int_test PRIVATE
+    Catch2::Catch2WithMain
+    clht_lb
+    clht_lf
+    ssmem
+    atomic
+    pthread
+)
+
+add_test(NAME clht_int_test COMMAND clht_int_test)
+
+# ============================================================================
+# CLHT Integer Key Benchmark Tests
+# ============================================================================
+add_executable(clht_int_benchmark_test
+    test/clht_int_benchmark_test.cpp
+)
+
+target_include_directories(clht_int_benchmark_test PRIVATE
+    ${SRC_DIR}
+    ${EXTERNAL_DIR}/stub_includes
+    ${EXTERNAL_DIR}/clht/include
+    ${EXTERNAL_DIR}/ssmem/include
+    ${EXTERNAL_DIR}/sspfd
+    ${EXTERNAL_DIR}/libcuckoo
+    ${EXTERNAL_DIR}/abseil-cpp
+    ${EXTERNAL_DIR}/folly
+)
+
+target_compile_options(clht_int_benchmark_test PRIVATE
+    -march=native
+    -msse4.2
+    -mavx2
+)
+
+target_link_libraries(clht_int_benchmark_test PRIVATE
+    Catch2::Catch2WithMain
+    clht_lb
+    clht_lf
+    ssmem
+    absl::flat_hash_map
+    folly_f14_minimal
+    libcuckoo
+    atomic
+    pthread
+)
+
+add_test(NAME clht_int_benchmark_test COMMAND clht_int_benchmark_test --benchmark-samples 10 "[clht_int]")
 
 # ============================================================================
 # CLHT String Key Benchmark

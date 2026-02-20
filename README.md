@@ -95,7 +95,11 @@ make -j$(nproc)
 ### Build Targets
 
 - `hashmap_bench` - Main benchmark executable
-- `hashmap_bench_test` - Unit test executable
+- `hashmap_bench_test` - 基础单元测试
+- `clht_string_test` - CLHT 字符串键单元测试
+- `clht_benchmark_test` - CLHT 字符串键性能测试
+- `clht_int_test` - CLHT 整数键单元测试
+- `clht_int_benchmark_test` - CLHT 整数键性能测试
 - `clht_str_bench` - CLHT string key standalone benchmark
 
 ## Usage
@@ -135,12 +139,83 @@ make -j$(nproc)
 
 ## Run Tests
 
-```bash
-./hashmap_bench_test
+项目包含 5 个测试目标，覆盖三类测试：单元测试、性能测试、比较测试。
 
-# Or with CTest
+### 测试分类
+
+#### 1. 单元测试 (Unit Tests)
+验证 CLHT 实现的正确性，覆盖以下场景：
+- **基本功能**: 空 table 查询、单键插入/查询、多键插入
+- **更新行为**: CLHT 不支持更新已存在的键（设计特性）
+- **冲突处理**: 强制哈希冲突场景下的正确性
+- **键范围**: 短键、长键、边界键（空字符串、超长字符串）
+- **边界条件**: 最小/最大容量、最大值、溢出桶处理
+- **压力测试**: 大量键、随机顺序插入、高负载因子
+- **数据一致性**: 键不被修改、相似键区分
+- **删除操作**: 删除、删除后重新插入
+- **内存管理**: 多次创建/销毁、溢出桶处理
+
+#### 2. 性能测试 (Performance Tests)
+使用 Catch2 benchmark 框架测量吞吐量：
+- **Insert 性能**: 插入操作的耗时和吞吐量
+- **Lookup 性能**: 查询操作的耗时和吞吐量
+- **负载因子影响**: 25%、50%、75%、90% 负载因子下的性能
+- **键长度影响**: 8B、32B、128B、512B 键的性能
+- **混合操作**: 80% 查询 + 20% 插入场景
+- **规模测试**: 1K、10K、100K 元素规模
+- **吞吐量计算**: 精确计算 ops/sec
+
+#### 3. 比较测试 (Comparison Tests)
+CLHT 与主流 hashmap 实现的性能对比：
+- `std::unordered_map` - STL 标准实现
+- `absl::flat_hash_map` - Google Abseil Swiss Table
+- `folly::F14FastMap` - Facebook F14 SIMD 优化
+
+### 测试目标
+
+| 测试目标 | 类型 | 测试用例数 | 断言数 | 说明 |
+|----------|------|-----------|--------|------|
+| `hashmap_bench_test` | 单元测试 | 19 | 55 | 基础 hashmap 单元测试 |
+| `clht_string_test` | 单元测试 | 62 | 87405 | CLHT 字符串键单元测试 |
+| `clht_int_test` | 单元测试 | 25 | - | CLHT 整数键单元测试 |
+| `clht_benchmark_test` | 性能测试 | 10+ | - | CLHT 字符串键性能测试（含比较） |
+| `clht_int_benchmark_test` | 性能测试 | 10+ | - | CLHT 整数键性能测试（含比较） |
+
+### 运行测试
+
+```bash
+# 运行所有测试
 cd build
 ctest --output-on-failure
+
+# 仅运行单元测试
+./hashmap_bench_test
+./clht_string_test
+./clht_int_test
+
+# 仅运行性能测试（需要更多时间）
+./clht_benchmark_test --benchmark-samples 10
+./clht_int_benchmark_test --benchmark-samples 10
+```
+
+### 最近测试结果
+
+```
+Test project /home/li/hashmap_bench/build
+
+    Start 1: hashmap_bench_test
+1/5 Test #1: hashmap_bench_test ...............   Passed    0.03 sec
+    Start 2: clht_string_test
+2/5 Test #2: clht_string_test .................   Passed    0.02 sec
+    Start 3: clht_benchmark_test
+3/5 Test #3: clht_benchmark_test ..............   Passed   25.79 sec
+    Start 4: clht_int_test
+4/5 Test #4: clht_int_test ....................   Passed    0.03 sec
+    Start 5: clht_int_benchmark_test
+5/5 Test #5: clht_int_benchmark_test ..........   Passed   13.23 sec
+
+100% tests passed, 0 tests failed out of 5
+Total Test time (real) =  39.10 sec
 ```
 
 ## Project Structure
@@ -176,7 +251,11 @@ hashmap_bench/
 │       ├── clht_str_final.hpp     # Single-pass optimized (best)
 │       └── clht_str_bench.cpp     # Standalone benchmark
 └── test/
-    └── hashmap_bench_test.cpp  # Catch2 unit tests
+    ├── hashmap_bench_test.cpp      # 基础 hashmap 单元测试
+    ├── clht_string_test.cpp        # CLHT 字符串键单元测试 (62 cases)
+    ├── clht_benchmark_test.cpp     # CLHT 字符串键性能测试
+    ├── clht_int_test.cpp           # CLHT 整数键单元测试 (25 cases)
+    └── clht_int_benchmark_test.cpp # CLHT 整数键性能测试
 ```
 
 ## Benchmark Results
