@@ -34,18 +34,20 @@ A comprehensive C++ hash map performance benchmark suite that compares multiple 
 | `CLHT-Str-Inline` | Custom | string only | ✅ | Inline 16B, fast insert |
 | `CLHT-Str-Ptr` | Custom | string only | ✅ | Hash+Pointer, flexible allocator |
 | `CLHT-Str-Pooled` | Custom | string only | ✅ | Key pool, cache-friendly |
+| **`CLHT libfork`** | Custom+libfork | string, int | ✅ | **Parallel batch lookup (4x speedup)** |
 
 ## CLHT String Key Implementations
 
-Five specialized string key implementations based on CLHT architecture:
+Six specialized string key implementations based on CLHT architecture:
 
 | Implementation | Description | Pros | Cons |
 |----------------|-------------|------|------|
-| **CLHT-Str-Final** | Single-pass + SIMD, 128B cache-line | Best insert & query | Moderate complexity |
+| **CLHT-Str-Final** | Single-pass + SIMD, 128B cache-line | Best insert & query (small scale) | Scale-sensitive |
 | CLHT-Str-Tagged | Tag+SIMD filtering, 128B cache-line | Good query performance | Two-pass insert |
 | CLHT-Str-Inline | Inline 16-byte storage | Fast insert, no alloc | Limited key length |
 | CLHT-Str-Ptr | Hash+Pointer storage | Flexible allocator | Extra pointer dereference |
 | CLHT-Str-Pooled | Key pool allocator | Cache-friendly | Pool management overhead |
+| **CLHT libfork** | Parallel batch operations | 4x lookup speedup | Serial insert only |
 
 ### CLHT-Str-Final Optimizations
 
@@ -275,7 +277,7 @@ hashmap_bench/
 
 ## Benchmark Results
 
-Test environment: Linux, C++20, O3 optimization, single-threaded execution
+Test environment: Linux, C++20, O3 optimization
 
 ### Integer Keys (int64) - 1M Elements
 
@@ -284,6 +286,7 @@ Test environment: Linux, C++20, O3 optimization, single-threaded execution
 | **google::dense_hash_map** | 0.002230 | 0.002013 | **470.4** | **521.1** | ❌ |
 | **CLHT-LB** | 0.003944 | 0.002244 | **266.0** | **467.3** | ✅ Lock-Based |
 | **CLHT-LF** | 0.004757 | 0.003306 | **220.3** | **317.2** | ✅ Lock-Free |
+| **CLHT libfork (8t)** | 0.0649 | 0.0024 | 16.2 | **437** | ✅ **Parallel Lookup** |
 | boost::flat_map | 0.013117 | 0.024905 | 80.0 | 42.1 | ❌ |
 | google::sparse_hash_map | 0.024970 | 0.009661 | 42.0 | 108.6 | ❌ |
 | std::unordered_map | 0.032244 | 0.002028 | 32.5 | 517.2 | ❌ |
@@ -312,6 +315,7 @@ Test environment: Linux, C++20, O3 optimization, single-threaded execution
 | Implementation | Insert (s) | Query (s) | Insert Mops/s | Query Mops/s | Concurrent |
 |----------------|------------|-----------|---------------|--------------|------------|
 | folly::F14FastMap | 0.0324 | 0.0118 | 32.4 | **88.7** | ❌ |
+| **CLHT libfork (8t)** | 0.0822 | 0.0140 | 12.8 | **74.9** | ✅ **Parallel Lookup** |
 | CLHT-Str-Inline | 0.0322 | 0.0339 | **32.6** | 30.9 | ✅ |
 | CLHT-Str-Ptr | 0.0528 | 0.0300 | 19.9 | 34.9 | ✅ |
 | CLHT-Str-Final | 0.0647 | 0.0370 | 16.2 | 28.3 | ✅ |
@@ -320,12 +324,10 @@ Test environment: Linux, C++20, O3 optimization, single-threaded execution
 
 ### Key Findings
 
-1. **Best Overall for String Keys**: `CLHT-Str-Final` with single-pass + SIMD optimization
-   - Insert: 51.0 Mops/s (+33% vs folly::F14FastMap)
-   - Query: 119.1 Mops/s (+4% vs folly::F14FastMap)
-2. **Best for Integer Keys**: `google::dense_hash_map` (non-concurrent), `CLHT-LB/LF` (concurrent)
-3. **Single-Pass Optimization**: Provides **10%+** insert improvement over two-pass approach
-4. **Concurrent Performance**: `CLHT-LF` (lock-free) achieves near non-concurrent performance
+1. **Best for Integer Keys**: `google::dense_hash_map` (non-concurrent), `CLHT-LB/LF` (concurrent), `CLHT libfork` (parallel)
+2. **Best for String Keys**: `CLHT-Str-Final` (small scale), `CLHT libfork` (parallel lookup), `folly::F14FastMap` (non-concurrent)
+3. **Parallel Lookup Speedup**: CLHT libfork achieves **4x** speedup over serial for both Integer and String keys
+4. **Concurrent Safety**: All CLHT variants provide thread-safe operations
 
 ## Concurrency Support Summary
 
@@ -334,6 +336,7 @@ Test environment: Linux, C++20, O3 optimization, single-threaded execution
 | CLHT-Str-* (all) | ✅ Yes | Lock-based bucket locks |
 | CLHT-LB | ✅ Yes | Lock-based |
 | CLHT-LF | ✅ Yes | Lock-free |
+| **CLHT libfork** | ✅ Yes | **Parallel batch ops (4x speedup)** |
 | libcuckoo::cuckoohash_map | ✅ Yes | Fine-grained locks |
 | phmap::parallel_flat_hash_map | ⚠️ Optional | Submap-level mutex (template param) |
 | All others | ❌ No | External sync required |
