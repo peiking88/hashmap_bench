@@ -384,55 +384,62 @@ ht_str.batch_mixed(keys, values, results, 0.2);
 
 #### String Key Lookup 性能对比
 
-| 实现 | 耗时 (ms) | 吞吐量 (Mops/s) | 相对性能 |
-|------|-----------|-----------------|----------|
-| **CLHT libfork PARALLEL** | **14.0** | **74.9** | **4.0x** vs serial |
-| folly::F14FastMap | 17.9 | 58.6 | 3.1x vs serial |
-| absl::flat_hash_map | 38.1 | 27.5 | 1.5x vs serial |
-| CLHT serial | 55.7 | 18.8 | 1.0x (基准) |
-| std::unordered_map | 58.8 | 17.8 | 0.9x vs serial |
+| 实现 | 耗时 (ms) | 吞吐量 (Mops/s) | 并发安全 | 说明 |
+|------|-----------|-----------------|----------|------|
+| folly::F14FastMap | 11.3 | 92.8 | ❌ | SIMD 优化，最优 |
+| **CLHT libfork PARALLEL** | **14.0** | **74.9** | ✅ | **并发安全最优** |
+| CLHT-Str-Ptr | 31.0 | 33.8 | ✅ | Hash+Pointer |
+| CLHT-Str-Final | 39.3 | 26.7 | ✅ | Tag+SIMD |
+| absl::flat_hash_map | 42.5 | 24.7 | ❌ | Swiss Table |
+| std::unordered_map | 58.6 | 17.9 | ❌ | STL |
 
 #### String Key Insert 性能对比
 
-| 实现 | 耗时 (ms) | 吞吐量 (Mops/s) | 说明 |
-|------|-----------|-----------------|------|
-| folly::F14FastMap | 43.7 | 24.0 | 最优 |
-| CLHT serial | 72.6 | 14.4 | 并发安全 |
-| CLHT libfork (serial insert) | 82.2 | 12.7 | 并发安全 |
-| absl::flat_hash_map | 190.9 | 5.5 | - |
-| std::unordered_map | 309.9 | 3.4 | - |
+| 实现 | 耗时 (ms) | 吞吐量 (Mops/s) | 并发安全 | 说明 |
+|------|-----------|-----------------|----------|------|
+| folly::F14FastMap | 31.5 | 33.3 | ❌ | 最优 |
+| CLHT-Str-Inline | 31.2 | 33.6 | ✅ | **并发安全最优** |
+| CLHT-Str-Ptr | 54.7 | 19.2 | ✅ | Hash+Pointer |
+| CLHT-Str-Final | 71.5 | 14.7 | ✅ | Tag+SIMD |
+| absl::flat_hash_map | 96.6 | 10.9 | ❌ | - |
+| std::unordered_map | 131.9 | 7.9 | ❌ | - |
 
 #### Integer Key Lookup 性能对比
 
-| 实现 | 耗时 (ms) | 吞吐量 (Mops/s) | 相对性能 |
-|------|-----------|-----------------|----------|
-| **CLHT libfork PARALLEL (8t)** | **2.4** | **437** | 近线性扩展 |
-| CLHT libfork (1t) | 71.7 | 14.6 | 基准 |
-| CLHT libfork (2t) | 71.7 | 14.6 | - |
-| CLHT libfork (4t) | 39.6 | 26.5 | - |
+| 实现 | 耗时 (ms) | 吞吐量 (Mops/s) | 并发安全 | 说明 |
+|------|-----------|-----------------|----------|------|
+| CLHT-LB | 2.09 | 502 | ✅ | Lock-Based |
+| CLHT-LF | 2.17 | 483 | ✅ | Lock-Free |
+| google::dense_hash_map | 2.30 | 456 | ❌ | 非并发最优 |
+| **CLHT libfork PARALLEL (8t)** | **2.4** | **437** | ✅ | **并行版本** |
+| std::unordered_map | 2.35 | 446 | ❌ | STL |
+| libcuckoo | 8.59 | 122 | ✅ | Cuckoo Hash |
+| folly::F14FastMap | 14.4 | 72.8 | ❌ | - |
 
 #### Integer Key Insert 性能对比
 
-| 实现 | 耗时 (ms) | 吞吐量 (Mops/s) | 说明 |
-|------|-----------|-----------------|------|
-| std::unordered_map | 24.2 | 43.3 | 非并发 |
-| folly::F14FastMap | 32.3 | 32.5 | 非并发 |
-| absl::flat_hash_map | 42.6 | 24.6 | 非并发 |
-| CLHT libfork (serial insert) | 64.9 | 16.2 | 并发安全 |
+| 实现 | 耗时 (ms) | 吞吐量 (Mops/s) | 并发安全 | 说明 |
+|------|-----------|-----------------|----------|------|
+| google::dense_hash_map | 2.16 | 485 | ❌ | 非并发最优 |
+| CLHT-LF | 3.57 | 294 | ✅ | **并发安全最优** |
+| CLHT-LB | 3.71 | 283 | ✅ | Lock-Based |
+| libcuckoo | 17.7 | 59.2 | ✅ | Cuckoo Hash |
+| std::unordered_map | 22.1 | 47.5 | ❌ | - |
+| folly::F14FastMap | 27.9 | 37.6 | ❌ | - |
 
 ### 关键发现
 
-1. **String Lookup 并行加速显著**: CLHT libfork 并行版本比串行版本快 **4.0x**，超越 folly::F14FastMap **28%**
-2. **Integer Lookup 近线性扩展**: 8 线程下达到 **437 Mops/s**，展现出良好的并行扩展性
-3. **Insert 串行执行更优**: 避免 CLHT bucket 锁竞争，性能稳定可预测
-4. **并发安全优势**: CLHT 提供线程安全保证，适合多线程场景
+1. **Integer 并发安全最优**: CLHT-LB/LF 单线程性能已超越 std::unordered_map，且支持并发
+2. **String 并发安全最优**: CLHT-Str-Inline Insert 接近 folly::F14FastMap，CLHT libfork Lookup 最优
+3. **libfork 并行扩展**: Integer Lookup 在 8 线程下达到 437 Mops/s，展现良好扩展性
+4. **性能权衡**: 非并发场景下 folly::F14FastMap 和 google::dense_hash_map 更优
 
 ### 使用建议
 
-- **批量 Lookup**: 使用 libfork 并行版本，获得 4x 加速
-- **批量 Insert**: 使用串行执行，避免锁竞争
+- **并发场景**: CLHT-LB/LF (Integer) 或 CLHT libfork (批量 Lookup)
+- **非并发场景**: folly::F14FastMap 或 google::dense_hash_map
+- **批量 Lookup**: libfork 并行版本获得 4x 加速
 - **混合工作负载**: `batch_mixed()` 自动采用最优策略
-- **推荐线程数**: 不超过物理核心数
 
 ## License
 
