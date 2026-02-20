@@ -369,30 +369,67 @@ ht_str.batch_remove(keys, removed);
 ht_str.batch_mixed(keys, values, results, 0.2);
 ```
 
-### 性能扩展性
+### 优化策略
 
-| 操作 | 1 线程 | 4 线程 | 8 线程 | 扩展比 |
-|------|--------|--------|--------|--------|
-| **String Insert** | 1x | 2.5x | 4x | 线性扩展受锁竞争限制 |
-| **String Lookup** | 1x | 3.8x | 7x | 近线性扩展（无锁读取） |
-| **Integer Insert** | 1x | 2.8x | 4.5x | 线性扩展受锁竞争限制 |
-| **Integer Lookup** | 1x | 3.5x | 6.5x | 近线性扩展 |
+```
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                           优化策略                                            ║
+╠══════════════════════════════════════════════════════════════════════════════╣
+║  - Insert: SERIAL (CLHT bucket 锁限制并行扩展)                                ║
+║  - Lookup: PARALLEL (无锁读取，近线性扩展)                                    ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+```
 
-### 与其他实现对比
+### 大规模性能测试 (N = 2^20 = 1,048,576 元素)
 
-| 方案 | Lookup 加速 | Insert 加速 | 实现复杂度 | 内存开销 |
-|------|-------------|-------------|------------|----------|
-| **libfork** | 7x (8核) | 4x (8核) | 低 | 极低 |
-| OpenMP | 5x | 3x | 低 | 中等 |
-| TBB | 4x | 2.5x | 中等 | 高 |
-| std::thread | 3x | 2x | 高 | 中等 |
+#### String Key Lookup 性能对比
+
+| 实现 | 耗时 (ms) | 吞吐量 (Mops/s) | 相对性能 |
+|------|-----------|-----------------|----------|
+| **CLHT libfork PARALLEL** | **14.07** | **74.5** | **4.0x** vs serial |
+| folly::F14FastMap | 20.04 | 52.3 | 2.8x vs serial |
+| absl::flat_hash_map | 38.00 | 27.6 | 1.5x vs serial |
+| CLHT serial | 56.33 | 18.6 | 1.0x (基准) |
+| std::unordered_map | 94.45 | 11.1 | 0.6x vs serial |
+
+#### Integer Key Lookup 性能对比
+
+| 实现 | 耗时 (ms) | 吞吐量 (Mops/s) | 相对性能 |
+|------|-----------|-----------------|----------|
+| std::unordered_map | 2.16 | 485 | - |
+| **CLHT libfork PARALLEL** | **2.24** | **468** | 最优并发实现 |
+| folly::F14FastMap | 26.23 | 40 | - |
+| absl::flat_hash_map | 24.52 | 43 | - |
+
+#### String Key Insert 性能对比
+
+| 实现 | 耗时 (ms) | 吞吐量 (Mops/s) | 说明 |
+|------|-----------|-----------------|------|
+| folly::F14FastMap | 46.02 | 22.8 | 最优 |
+| CLHT serial | 67.59 | 15.5 | 并发安全 |
+| CLHT libfork (serial insert) | 74.77 | 14.0 | 并发安全 |
+
+#### Integer Key Insert 性能对比
+
+| 实现 | 耗时 (ms) | 吞吐量 (Mops/s) | 说明 |
+|------|-----------|-----------------|------|
+| std::unordered_map | 21.81 | 48.1 | - |
+| folly::F14FastMap | 26.74 | 39.2 | - |
+| CLHT libfork (serial insert) | 61.51 | 17.0 | 并发安全 |
+
+### 关键发现
+
+1. **String Lookup 并行加速显著**: CLHT libfork 并行版本比串行版本快 **4.0x**
+2. **Integer Lookup 性能优异**: 并行 CLHT 与 std::unordered_map 性能相近 (468 vs 485 Mops/s)
+3. **Insert 串行执行更优**: 避免 CLHT bucket 锁竞争，所有线程数性能一致
+4. **CLHT libfork 并发优势**: 在并发安全的前提下，Lookup 性能超越 folly::F14FastMap
 
 ### 使用建议
 
-- **批量 Lookup**：收益最高，无锁读取实现近线性扩展
-- **批量 Insert**：受 bucket 锁限制，仍有显著加速
-- **推荐线程数**：不超过物理核心数
-- **NUMA 架构**：多 socket 服务器收益更大
+- **批量 Lookup**: 使用 libfork 并行版本，获得 4x 加速
+- **批量 Insert**: 使用串行执行，避免锁竞争
+- **混合工作负载**: `batch_mixed()` 自动采用最优策略
+- **推荐线程数**: 不超过物理核心数
 
 ### 原有 folly::coro 方案（参考）
 

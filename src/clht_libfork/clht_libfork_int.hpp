@@ -1,12 +1,11 @@
 #pragma once
 
 /**
- * CLHT Integer Key with libfork Parallel Operations
- * 
- * Provides parallel batch operations using libfork's work-stealing scheduler:
- * - Parallel batch insert
- * - Parallel batch lookup
- * - Parallel batch remove
+ * CLHT Integer Key with libfork Parallel Operations (Optimized)
+ *
+ * Strategy:
+ * - Insert/Remove: SERIAL (CLHT bucket locks limit parallel scaling)
+ * - Lookup: PARALLEL (lock-free reads scale near-linearly)
  */
 
 extern "C" {
@@ -27,39 +26,7 @@ namespace clht_libfork {
 namespace impl {
 
 /**
- * @brief Overload for parallel insert (integer keys)
- */
-struct insert_int_overload {
-    LF_STATIC_CALL auto operator()(auto insert_int,
-                                    clht_t* ht,
-                                    std::span<const uintptr_t> keys,
-                                    std::span<const uintptr_t> values) LF_STATIC_CONST -> lf::task<> {
-        constexpr size_t THRESHOLD = 64;
-        
-        if (keys.size() <= THRESHOLD) {
-            // Base case: serial processing
-            for (size_t i = 0; i < keys.size(); ++i) {
-                clht_put(ht, keys[i], values[i]);
-            }
-            co_return;
-        }
-        
-        // Split task
-        size_t mid = keys.size() / 2;
-        
-        co_await lf::fork(insert_int)(ht, 
-            std::span<const uintptr_t>(keys.begin(), mid), 
-            std::span<const uintptr_t>(values.begin(), mid));
-        co_await lf::call(insert_int)(ht, 
-            std::span<const uintptr_t>(keys.begin() + mid, keys.end()), 
-            std::span<const uintptr_t>(values.begin() + mid, values.end()));
-        
-        co_await lf::join;
-    }
-};
-
-/**
- * @brief Overload for parallel lookup (integer keys)
+ * @brief Overload for PARALLEL lookup (lock-free reads)
  */
 struct lookup_int_overload {
     LF_STATIC_CALL auto operator()(auto lookup_int,
@@ -67,7 +34,7 @@ struct lookup_int_overload {
                                     std::span<const uintptr_t> keys,
                                     std::span<uintptr_t> results) LF_STATIC_CONST -> lf::task<> {
         constexpr size_t THRESHOLD = 128;
-        
+
         if (keys.size() <= THRESHOLD) {
             // Base case: serial processing
             for (size_t i = 0; i < keys.size(); ++i) {
@@ -75,62 +42,30 @@ struct lookup_int_overload {
             }
             co_return;
         }
-        
+
         // Split task
         size_t mid = keys.size() / 2;
-        
-        co_await lf::fork(lookup_int)(ht, 
-            std::span<const uintptr_t>(keys.begin(), mid), 
+
+        co_await lf::fork(lookup_int)(ht,
+            std::span<const uintptr_t>(keys.begin(), mid),
             std::span<uintptr_t>(results.begin(), mid));
-        co_await lf::call(lookup_int)(ht, 
-            std::span<const uintptr_t>(keys.begin() + mid, keys.end()), 
+        co_await lf::call(lookup_int)(ht,
+            std::span<const uintptr_t>(keys.begin() + mid, keys.end()),
             std::span<uintptr_t>(results.begin() + mid, results.end()));
-        
+
         co_await lf::join;
     }
 };
 
-/**
- * @brief Overload for parallel remove (integer keys)
- */
-struct remove_int_overload {
-    LF_STATIC_CALL auto operator()(auto remove_int,
-                                    clht_t* ht,
-                                    std::span<const uintptr_t> keys,
-                                    std::span<uintptr_t> results) LF_STATIC_CONST -> lf::task<> {
-        constexpr size_t THRESHOLD = 64;
-        
-        if (keys.size() <= THRESHOLD) {
-            // Base case: serial processing
-            for (size_t i = 0; i < keys.size(); ++i) {
-                results[i] = clht_remove(ht, keys[i]);
-            }
-            co_return;
-        }
-        
-        // Split task
-        size_t mid = keys.size() / 2;
-        
-        co_await lf::fork(remove_int)(ht, 
-            std::span<const uintptr_t>(keys.begin(), mid), 
-            std::span<uintptr_t>(results.begin(), mid));
-        co_await lf::call(remove_int)(ht, 
-            std::span<const uintptr_t>(keys.begin() + mid, keys.end()), 
-            std::span<uintptr_t>(results.begin() + mid, results.end()));
-        
-        co_await lf::join;
-    }
-};
-
-// Global function objects
-inline constexpr insert_int_overload insert_int = {};
+// Global function object
 inline constexpr lookup_int_overload lookup_int = {};
-inline constexpr remove_int_overload remove_int = {};
 
 } // namespace impl
 
 /**
  * Parallel CLHT Integer Key Implementation
+ * 
+ * Optimized: Insert/Remove are SERIAL, Lookup is PARALLEL
  */
 class ParallelClhtInt {
 public:
@@ -141,59 +76,61 @@ public:
         }
         num_threads_ = num_threads;
         pool_ = std::make_unique<lf::lazy_pool>(num_threads);
-        
+
         ht_ = clht_create(capacity);
-        
+
         // Initialize GC for each thread (required for CLHT)
         for (size_t i = 0; i < num_threads; ++i) {
             clht_gc_thread_init(ht_, static_cast<int>(i));
         }
     }
-    
+
     ~ParallelClhtInt() {
         clht_gc_destroy(ht_);
     }
-    
+
     // Disable copy
     ParallelClhtInt(const ParallelClhtInt&) = delete;
     ParallelClhtInt& operator=(const ParallelClhtInt&) = delete;
-    
+
     // Single operations (serial)
     bool insert(uintptr_t key, uintptr_t value) {
         return clht_put(ht_, key, value) != 0;
     }
-    
+
     uintptr_t lookup(uintptr_t key) {
         return clht_get(ht_->ht, key);
     }
-    
+
     uintptr_t remove(uintptr_t key) {
         return clht_remove(ht_, key);
     }
-    
+
     size_t size() const {
         return clht_size(ht_->ht);
     }
-    
-    // Parallel batch operations
+
+    // SERIALIZD batch insert (bucket locks limit parallel scaling)
     void batch_insert(const std::vector<uintptr_t>& keys,
                       const std::vector<uintptr_t>& values);
-    
+
+    // PARALLEL batch lookup (lock-free reads)
     void batch_lookup(const std::vector<uintptr_t>& keys,
                       std::vector<uintptr_t>& results);
-    
+
+    // SERIAL batch remove (write operation)
     void batch_remove(const std::vector<uintptr_t>& keys,
                       std::vector<uintptr_t>& results);
-    
-    // Parallel mixed workload
+
+    // Mixed workload: insert serial, lookup parallel
     void batch_mixed(const std::vector<uintptr_t>& keys,
                      const std::vector<uintptr_t>& values,
                      std::vector<uintptr_t>& results,
                      double insert_ratio = 0.2);
-    
+
     // Get underlying CLHT pointer for comparison
     clht_t* get_underlying() { return ht_; }
-    
+
 private:
     clht_t* ht_;
     size_t capacity_;
@@ -201,51 +138,57 @@ private:
     std::unique_ptr<lf::lazy_pool> pool_;
 };
 
+// SERIAL insert - CLHT bucket locks limit parallel scaling
 inline void ParallelClhtInt::batch_insert(const std::vector<uintptr_t>& keys,
                                           const std::vector<uintptr_t>& values) {
     if (keys.empty()) return;
-    
-    lf::sync_wait(*pool_, impl::insert_int, ht_,
-                  std::span<const uintptr_t>(keys), 
-                  std::span<const uintptr_t>(values));
+
+    // Serial execution for insert
+    for (size_t i = 0; i < keys.size(); ++i) {
+        clht_put(ht_, keys[i], values[i]);
+    }
 }
 
+// PARALLEL lookup - lock-free reads scale near-linearly
 inline void ParallelClhtInt::batch_lookup(const std::vector<uintptr_t>& keys,
                                           std::vector<uintptr_t>& results) {
     if (keys.empty()) return;
-    
+
     results.resize(keys.size());
     lf::sync_wait(*pool_, impl::lookup_int, ht_,
-                  std::span<const uintptr_t>(keys), 
+                  std::span<const uintptr_t>(keys),
                   std::span<uintptr_t>(results));
 }
 
+// SERIAL remove - write operation
 inline void ParallelClhtInt::batch_remove(const std::vector<uintptr_t>& keys,
                                           std::vector<uintptr_t>& results) {
     if (keys.empty()) return;
-    
+
     results.resize(keys.size());
-    lf::sync_wait(*pool_, impl::remove_int, ht_,
-                  std::span<const uintptr_t>(keys), 
-                  std::span<uintptr_t>(results));
+    // Serial execution for remove
+    for (size_t i = 0; i < keys.size(); ++i) {
+        results[i] = clht_remove(ht_, keys[i]);
+    }
 }
 
+// Mixed workload: insert serial, lookup parallel
 inline void ParallelClhtInt::batch_mixed(const std::vector<uintptr_t>& keys,
                                          const std::vector<uintptr_t>& values,
                                          std::vector<uintptr_t>& results,
                                          double insert_ratio) {
     results.resize(keys.size());
-    
+
     // Simple mixed workload: insert first N%, lookup rest
     size_t insert_count = static_cast<size_t>(keys.size() * insert_ratio);
-    
+
     if (insert_count > 0) {
         batch_insert(
             std::vector<uintptr_t>(keys.begin(), keys.begin() + insert_count),
             std::vector<uintptr_t>(values.begin(), values.begin() + insert_count)
         );
     }
-    
+
     if (insert_count < keys.size()) {
         batch_lookup(
             std::vector<uintptr_t>(keys.begin() + insert_count, keys.end()),

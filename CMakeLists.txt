@@ -482,6 +482,45 @@ target_link_libraries(clht_libfork_benchmark PRIVATE
 add_test(NAME clht_libfork_benchmark COMMAND clht_libfork_benchmark --benchmark-samples 10 "[clht_libfork]")
 
 # ============================================================================
+# CLHT Large Scale Benchmark (2^20 elements)
+# ============================================================================
+add_executable(clht_large_scale_benchmark
+    test/clht_large_scale_benchmark.cpp
+)
+
+target_include_directories(clht_large_scale_benchmark PRIVATE
+    ${SRC_DIR}
+    ${SRC_DIR}/clht_libfork
+    ${SRC_DIR}/clht_string
+    ${EXTERNAL_DIR}/stub_includes
+    ${EXTERNAL_DIR}/clht/include
+    ${EXTERNAL_DIR}/ssmem/include
+    ${EXTERNAL_DIR}/sspfd
+    ${EXTERNAL_DIR}/abseil-cpp
+    ${EXTERNAL_DIR}/folly
+)
+
+target_compile_options(clht_large_scale_benchmark PRIVATE
+    -march=native
+    -msse4.2
+    -mavx2
+)
+
+target_link_libraries(clht_large_scale_benchmark PRIVATE
+    Catch2::Catch2WithMain
+    libfork
+    clht_lb
+    clht_lf
+    ssmem
+    folly_f14_minimal
+    absl::flat_hash_map
+    atomic
+    pthread
+)
+
+add_test(NAME clht_large_scale_benchmark COMMAND clht_large_scale_benchmark --benchmark-samples 5 "[large]")
+
+# ============================================================================
 # Install
 # ============================================================================
 install(TARGETS hashmap_bench RUNTIME DESTINATION bin)
