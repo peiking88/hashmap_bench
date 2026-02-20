@@ -100,6 +100,8 @@ inline void lock_release_final(BucketFinal* bucket) {
 inline HashtableFinal* hashtable_final_create(size_t capacity, StringAllocator* alloc) {
     HashtableFinal* ht = new HashtableFinal{};
     
+    // Calculate bucket count to hold approximately 'capacity' entries
+    // Each bucket holds FINAL_ENTRIES_V (4) entries
     size_t size = 1;
     while (size < (capacity + FINAL_ENTRIES_V - 1) / FINAL_ENTRIES_V) {
         size <<= 1;
@@ -147,7 +149,8 @@ inline bool hashtable_final_put(HashtableFinal* ht, const char* key, size_t len,
     BucketFinal* bucket = head;
     BucketFinal* empty_bucket = nullptr;
     int empty_slot = -1;
-    BucketFinal* prev = nullptr;
+    BucketFinal* empty_prev = nullptr;  // Predecessor of empty_bucket
+    BucketFinal* prev = nullptr;        // Current predecessor
     
     while (bucket) {
         // SIMD match check
@@ -167,11 +170,13 @@ inline bool hashtable_final_put(HashtableFinal* ht, const char* key, size_t len,
         }
         
         // SIMD empty search (only if not found yet)
+        // Save predecessor when we find an empty slot
         if (empty_slot < 0) {
             uint32_t empty_mask = find_empty_tags_final(bucket->tags);
             if (empty_mask) {
                 empty_bucket = bucket;
                 empty_slot = __builtin_ctz(empty_mask);
+                empty_prev = prev;  // Save predecessor at this point
             }
         }
         
@@ -187,11 +192,11 @@ inline bool hashtable_final_put(HashtableFinal* ht, const char* key, size_t len,
         empty_bucket->key_ptrs[empty_slot] = ht->allocator->alloc(key, len);
         empty_bucket->key_lengths[empty_slot] = static_cast<uint16_t>(len);
         
-        if (empty_bucket != head && prev) {
-            // Find actual predecessor
-            BucketFinal* p = head;
-            while (p && p->next != empty_bucket) p = p->next;
-            if (p && p->outbound_overflow_count < 255) p->outbound_overflow_count++;
+        // Use saved predecessor
+        if (empty_bucket != head && empty_prev) {
+            if (empty_prev->outbound_overflow_count < 255) {
+                empty_prev->outbound_overflow_count++;
+            }
         }
         
         ht->num_elements.fetch_add(1, std::memory_order_relaxed);

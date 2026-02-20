@@ -298,17 +298,25 @@ Test environment: Linux, C++20, O3 optimization, single-threaded execution
 
 ### String Keys (6-16 bytes) - 262K Elements
 
-| Implementation | Insert (s) | Query (s) | Insert Mops/s | Query Mops/s | Notes |
-|----------------|------------|-----------|---------------|--------------|-------|
-| **CLHT-Str-Final** | 0.00515 | 0.00220 | **51.0** | **119.1** | **Single-pass, +33% vs F14** |
-| CLHT-Str-Inline | 0.00511 | 0.00264 | 51.3 | 99.3 | Inline 16B |
-| folly::F14FastMap | 0.00682 | 0.00229 | 38.4 | 114.5 | SIMD F14 hash |
-| CLHT-Str-Pooled | 0.00923 | 0.00282 | 28.4 | 93.0 | Key pool |
-| CLHT-Str-Ptr | 0.00775 | 0.00371 | 33.8 | 70.7 | Hash+Pointer |
-| CLHT-Str-Tagged | 0.01145 | 0.00241 | 22.9 | 108.9 | Tag+SIMD |
-| absl::node_hash_map | 0.01161 | 0.00287 | 22.6 | 91.4 | Swiss table |
-| phmap::flat_hash_map | 0.00836 | 0.00468 | 31.4 | 56.0 | Abseil-style |
-| std::unordered_map | 0.03530 | 0.01306 | 7.4 | 20.1 | STL |
+| Implementation | Insert (s) | Query (s) | Insert Mops/s | Query Mops/s | Concurrent |
+|----------------|------------|-----------|---------------|--------------|------------|
+| **CLHT-Str-Final** | 0.00521 | 0.00276 | **50.3** | **95.0** | ✅ Single-pass+SIMD |
+| folly::F14FastMap | 0.00692 | 0.00237 | 37.9 | 110.7 | ❌ |
+| CLHT-Str-Inline | 0.00908 | 0.00697 | 28.9 | 37.6 | ✅ Inline 16B |
+| CLHT-Str-Tagged | 0.01458 | 0.00296 | 18.0 | 88.6 | ✅ Tag+SIMD |
+| absl::node_hash_map | 0.01144 | 0.00279 | 22.9 | 94.0 | ❌ |
+| std::unordered_map | 0.03530 | 0.01306 | 7.4 | 20.1 | ❌ |
+
+### String Keys (6-16 bytes) - 1M Elements
+
+| Implementation | Insert (s) | Query (s) | Insert Mops/s | Query Mops/s | Concurrent |
+|----------------|------------|-----------|---------------|--------------|------------|
+| folly::F14FastMap | 0.0324 | 0.0118 | 32.4 | **88.7** | ❌ |
+| CLHT-Str-Inline | 0.0322 | 0.0339 | **32.6** | 30.9 | ✅ |
+| CLHT-Str-Ptr | 0.0528 | 0.0300 | 19.9 | 34.9 | ✅ |
+| CLHT-Str-Final | 0.0647 | 0.0370 | 16.2 | 28.3 | ✅ |
+| absl::flat_hash_map | 0.0997 | 0.0435 | 10.5 | 24.1 | ❌ |
+| std::unordered_map | 0.132 | 0.0586 | 7.9 | 17.9 | ❌ |
 
 ### Key Findings
 
@@ -372,67 +380,25 @@ ht_str.batch_mixed(keys, values, results, 0.2);
 ### 优化策略
 
 ```
-╔══════════════════════════════════════════════════════════════════════════════╗
-║                           优化策略                                            ║
-╠══════════════════════════════════════════════════════════════════════════════╣
-║  - Insert: SERIAL (CLHT bucket 锁限制并行扩展)                                ║
-║  - Lookup: PARALLEL (无锁读取，近线性扩展)                                    ║
-╚══════════════════════════════════════════════════════════════════════════════╝
+┌─────────────────────────────────────────────────────────────────┐
+│  Insert: SERIAL  (CLHT bucket 锁限制并行扩展)                    │
+│  Lookup: PARALLEL (无锁读取，近线性扩展)                         │
+└─────────────────────────────────────────────────────────────────┘
 ```
 
-### 大规模性能测试 (N = 2^20 = 1,048,576 元素)
+### 并行 Lookup 性能对比 (N = 1M)
 
-#### String Key Lookup 性能对比
+| 实现 | 耗时 (ms) | 吞吐量 (Mops/s) | 线程数 | 说明 |
+|------|-----------|-----------------|--------|------|
+| **CLHT libfork** | **14.0** | **74.9** | 8 | String Key 并发最优 |
+| folly::F14FastMap | 11.8 | 88.7 | 1 | 非并发最优 |
+| CLHT-Str-Final | 37.0 | 28.3 | 1 | 串行基准 |
 
-| 实现 | 耗时 (ms) | 吞吐量 (Mops/s) | 并发安全 | 说明 |
-|------|-----------|-----------------|----------|------|
-| folly::F14FastMap | 11.3 | 92.8 | ❌ | SIMD 优化，最优 |
-| **CLHT libfork PARALLEL** | **14.0** | **74.9** | ✅ | **并发安全最优** |
-| CLHT-Str-Ptr | 31.0 | 33.8 | ✅ | Hash+Pointer |
-| CLHT-Str-Final | 39.3 | 26.7 | ✅ | Tag+SIMD |
-| absl::flat_hash_map | 42.5 | 24.7 | ❌ | Swiss Table |
-| std::unordered_map | 58.6 | 17.9 | ❌ | STL |
-
-#### String Key Insert 性能对比
-
-| 实现 | 耗时 (ms) | 吞吐量 (Mops/s) | 并发安全 | 说明 |
-|------|-----------|-----------------|----------|------|
-| folly::F14FastMap | 31.5 | 33.3 | ❌ | 最优 |
-| CLHT-Str-Inline | 31.2 | 33.6 | ✅ | **并发安全最优** |
-| CLHT-Str-Ptr | 54.7 | 19.2 | ✅ | Hash+Pointer |
-| CLHT-Str-Final | 71.5 | 14.7 | ✅ | Tag+SIMD |
-| absl::flat_hash_map | 96.6 | 10.9 | ❌ | - |
-| std::unordered_map | 131.9 | 7.9 | ❌ | - |
-
-#### Integer Key Lookup 性能对比
-
-| 实现 | 耗时 (ms) | 吞吐量 (Mops/s) | 并发安全 | 说明 |
-|------|-----------|-----------------|----------|------|
-| CLHT-LB | 2.09 | 502 | ✅ | Lock-Based |
-| CLHT-LF | 2.17 | 483 | ✅ | Lock-Free |
-| google::dense_hash_map | 2.30 | 456 | ❌ | 非并发最优 |
-| **CLHT libfork PARALLEL (8t)** | **2.4** | **437** | ✅ | **并行版本** |
-| std::unordered_map | 2.35 | 446 | ❌ | STL |
-| libcuckoo | 8.59 | 122 | ✅ | Cuckoo Hash |
-| folly::F14FastMap | 14.4 | 72.8 | ❌ | - |
-
-#### Integer Key Insert 性能对比
-
-| 实现 | 耗时 (ms) | 吞吐量 (Mops/s) | 并发安全 | 说明 |
-|------|-----------|-----------------|----------|------|
-| google::dense_hash_map | 2.16 | 485 | ❌ | 非并发最优 |
-| CLHT-LF | 3.57 | 294 | ✅ | **并发安全最优** |
-| CLHT-LB | 3.71 | 283 | ✅ | Lock-Based |
-| libcuckoo | 17.7 | 59.2 | ✅ | Cuckoo Hash |
-| std::unordered_map | 22.1 | 47.5 | ❌ | - |
-| folly::F14FastMap | 27.9 | 37.6 | ❌ | - |
-
-### 关键发现
-
-1. **Integer 并发安全最优**: CLHT-LB/LF 单线程性能已超越 std::unordered_map，且支持并发
-2. **String 并发安全最优**: CLHT-Str-Inline Insert 接近 folly::F14FastMap，CLHT libfork Lookup 最优
-3. **libfork 并行扩展**: Integer Lookup 在 8 线程下达到 437 Mops/s，展现良好扩展性
-4. **性能权衡**: 非并发场景下 folly::F14FastMap 和 google::dense_hash_map 更优
+| 实现 | 耗时 (ms) | 吞吐量 (Mops/s) | 线程数 | 说明 |
+|------|-----------|-----------------|--------|------|
+| **CLHT libfork** | **2.4** | **437** | 8 | Integer Key 并发最优 |
+| CLHT-LB | 2.09 | 502 | 1 | 串行最优 |
+| google::dense_hash_map | 2.30 | 456 | 1 | 非并发最优 |
 
 ### 使用建议
 
