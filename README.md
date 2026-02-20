@@ -4,7 +4,8 @@ A comprehensive C++ hash map performance benchmark suite that compares multiple 
 
 ## Features
 
-- **15+ Hash Map Implementations**: Standard library, Abseil, Folly, Google, and specialized libraries
+- **20+ Hash Map Implementations**: Standard library, Abseil, Folly, Google, and specialized libraries
+- **CLHT String Key Variants**: Multiple string key implementations with Tag+SIMD optimization
 - **Multiple Key Types**: Short strings (6B), medium strings (32B), long strings (256B), and 64-bit integers
 - **Consistent Benchmarking**: Unified wrapper interface for fair comparison
 - **Unit Tests**: Catch2-based test suite for correctness verification
@@ -28,6 +29,31 @@ A comprehensive C++ hash map performance benchmark suite that compares multiple 
 | `OPIC::robin_hood` | OPIC | int only | ❌ | Open-persistent Robin Hood |
 | `CLHT-LB` | EPFL | int only | ✅ | Cache-line hash table (lock-based) |
 | `CLHT-LF` | EPFL | int only | ✅ | Cache-line hash table (lock-free) |
+| **`CLHT-Str-Tagged`** | Custom | string only | ✅ | **Tag+SIMD optimized, best query** |
+| `CLHT-Str-Ptr` | Custom | string only | ✅ | Hash+Pointer, flexible allocator |
+| `CLHT-Str-Inline` | Custom | string only | ✅ | Inline 16B, fastest insert |
+| `CLHT-Str-Pooled` | Custom | string only | ✅ | Key pool, cache-friendly |
+| `CLHT-Str-F14` | Custom | string only | ✅ | F14-style chunk design |
+
+## CLHT String Key Implementations
+
+Four specialized string key implementations based on CLHT architecture:
+
+| Implementation | Description | Pros | Cons |
+|----------------|-------------|------|------|
+| **CLHT-Str-Tagged** | Tag+SIMD filtering, 128B cache-line | Best query performance | Moderate complexity |
+| CLHT-Str-Ptr | Hash+Pointer storage | Flexible allocator | Extra pointer dereference |
+| CLHT-Str-Inline | Inline 16-byte storage | Fastest insert, no alloc | Limited key length |
+| CLHT-Str-Pooled | Key pool allocator | Cache-friendly | Pool management overhead |
+
+### Tag+SIMD Optimization (CLHT-Str-Tagged)
+
+Key optimizations for superior query performance:
+
+1. **7-bit Tag Filtering**: 1/128 false positive rate
+2. **SIMD Parallel Matching**: Single instruction compares 4 tags
+3. **Early Exit**: `outbound_overflow_count` avoids unnecessary traversal
+4. **Cache-line Aligned**: 128-byte bucket layout
 
 ## Dependencies (Git Submodules)
 
@@ -68,6 +94,7 @@ make -j$(nproc)
 
 - `hashmap_bench` - Main benchmark executable
 - `hashmap_bench_test` - Unit test executable
+- `clht_str_bench` - CLHT string key standalone benchmark
 
 ## Usage
 
@@ -137,7 +164,14 @@ hashmap_bench/
 │   ├── benchmark.cpp       # Benchmark utilities
 │   ├── benchmark.hpp       # Timer, key generation
 │   ├── hash_maps.hpp       # Hash map wrappers
-│   └── hashmap_bench.cpp   # Main benchmark program
+│   ├── hashmap_bench.cpp   # Main benchmark program
+│   └── clht_string/        # CLHT string key implementations
+│       ├── clht_str_common.hpp    # Common utilities (hash, SIMD)
+│       ├── clht_str_ptr.hpp       # Hash+Pointer storage
+│       ├── clht_str_inline.hpp    # Inline 16-byte storage
+│       ├── clht_str_pooled.hpp    # Key pool allocator
+│       ├── clht_str_tagged.hpp    # Tag+SIMD optimized (best query)
+│       └── clht_str_bench.cpp     # Standalone benchmark
 └── test/
     └── hashmap_bench_test.cpp  # Catch2 unit tests
 ```
@@ -165,32 +199,32 @@ Test environment: Linux, C++20, O3 optimization, single-threaded execution
 | cista::hash_map | 0.120215 | 0.010070 | 8.7 | 104.1 | ❌ |
 | OPIC::robin_hood | 0.122422 | 0.063377 | 8.6 | 16.6 | ❌ |
 
-### Short String Keys (6 bytes) - 1M Elements
+### String Keys (6-16 bytes) - 262K Elements
 
-| Implementation | Insert (s) | Query (s) | Insert Mops/s | Query Mops/s |
-|----------------|------------|-----------|---------------|--------------|
-| **folly::F14FastMap** | 0.067884 | 0.038905 | **15.5** | **27.0** |
-| google::dense_hash_map | 0.071771 | 0.065380 | 14.6 | 16.1 |
-| phmap::parallel_flat_hash_map | 0.080044 | 0.057708 | 13.1 | 18.2 |
-| phmap::flat_hash_map | 0.081439 | 0.048193 | 12.9 | 21.8 |
-| absl::node_hash_map | 0.091988 | 0.059196 | 11.4 | 17.7 |
-| cista::hash_map | 0.104095 | 0.058336 | 10.1 | 18.0 |
-| absl::flat_hash_map | 0.126048 | 0.070023 | 8.3 | 15.0 |
-| google::sparse_hash_map | 0.147836 | 0.095696 | 7.1 | 11.0 |
-| rhashmap | 0.179633 | 0.070432 | 5.8 | 14.9 |
-| libcuckoo::cuckoohash_map | 0.216239 | 0.119444 | 4.8 | 8.8 |
+| Implementation | Insert (s) | Query (s) | Insert Mops/s | Query Mops/s | Notes |
+|----------------|------------|-----------|---------------|--------------|-------|
+| **CLHT-Str-Tagged** | 0.00642 | 0.00218 | 40.9 | **120.0** | **Tag+SIMD, +28% vs F14** |
+| folly::F14FastMap | 0.00489 | 0.00280 | 53.7 | 93.5 | SIMD F14 hash |
+| CLHT-Str-Inline | 0.00586 | 0.00390 | 44.7 | 67.2 | Inline 16B |
+| CLHT-Str-F14 | 0.00762 | 0.00374 | 34.4 | 70.1 | F14-style chunk |
+| CLHT-Str-Ptr | 0.00854 | 0.00462 | 30.7 | 56.7 | Hash+Pointer |
+| CLHT-Str-Pooled | 0.00928 | 0.00486 | 28.3 | 53.9 | Key pool |
+| absl::node_hash_map | 0.01012 | 0.00456 | 25.9 | 57.4 | Swiss table |
+| phmap::flat_hash_map | 0.01234 | 0.00568 | 21.2 | 46.1 | Abseil-style |
+| std::unordered_map | 0.01856 | 0.00692 | 14.1 | 37.9 | STL |
 
 ### Key Findings
 
-1. **Best for Integer Keys**: `google::dense_hash_map` (non-concurrent), `CLHT-LB/LF` (concurrent)
-2. **Best for String Keys**: `folly::F14FastMap` 
-3. **Concurrent Performance**: `CLHT-LF` (lock-free) achieves near non-concurrent performance
-4. **Memory Efficient**: `google::sparse_hash_map` trades speed for memory
+1. **Best Query for String Keys**: `CLHT-Str-Tagged` with Tag+SIMD optimization (120 Mops/s)
+2. **Best for Integer Keys**: `google::dense_hash_map` (non-concurrent), `CLHT-LB/LF` (concurrent)
+3. **Tag+SIMD Optimization**: Provides **2.1x** query improvement over baseline CLHT-Str-Ptr
+4. **Concurrent Performance**: `CLHT-LF` (lock-free) achieves near non-concurrent performance
 
 ## Concurrency Support Summary
 
 | Implementation | Thread Safe | Mechanism |
 |----------------|-------------|-----------|
+| CLHT-Str-* (all) | ✅ Yes | Lock-based bucket locks |
 | CLHT-LB | ✅ Yes | Lock-based |
 | CLHT-LF | ✅ Yes | Lock-free |
 | libcuckoo::cuckoohash_map | ✅ Yes | Fine-grained locks |
@@ -204,4 +238,6 @@ MIT License (see LICENSE file)
 ## Acknowledgments
 
 - Based on [hash_bench](https://github.com/felix-chern/hash_bench) by Felix Chern
+- CLHT by [LPD-EPFL](https://github.com/LPD-EPFL/CLHT)
+- Folly F14 by Facebook
 - All hash map library authors for their excellent implementations

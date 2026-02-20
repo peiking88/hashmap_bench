@@ -216,6 +216,20 @@ std::vector<BenchmarkResult> run_all_string_benchmarks(
     results.push_back(benchmark_string_keys<PhmapParallelHashMapWrapper<std::string, uint64_t>>(
         "phmap::parallel_flat_hash_map", key_type, keys));
     
+    // CLHT String Key implementations
+    results.push_back(benchmark_string_keys<ClhtStrPtrWrapper>(
+        "CLHT-Str-Ptr", key_type, keys));
+    results.push_back(benchmark_string_keys<ClhtStrInlineWrapper>(
+        "CLHT-Str-Inline", key_type, keys));
+    results.push_back(benchmark_string_keys<ClhtStrPooledWrapper>(
+        "CLHT-Str-Pooled", key_type, keys));
+    results.push_back(benchmark_string_keys<ClhtStrF14Wrapper>(
+        "CLHT-Str-F14", key_type, keys));
+    results.push_back(benchmark_string_keys<ClhtStrF14V2Wrapper>(
+        "CLHT-Str-F14V2", key_type, keys));
+    results.push_back(benchmark_string_keys<ClhtStrTaggedWrapper>(
+        "CLHT-Str-Tagged", key_type, keys));
+    
     print_results(results);
     return results;
 }

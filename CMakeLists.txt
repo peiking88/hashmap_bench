@@ -178,6 +178,13 @@ target_include_directories(hashmap_bench PRIVATE
     ${EXTERNAL_DIR}/opic           # for OPIC headers
 )
 
+# Enable SIMD for CLHT string key implementations
+target_compile_options(hashmap_bench PRIVATE
+    -march=native
+    -msse4.2
+    -mavx2
+)
+
 target_link_libraries(hashmap_bench PRIVATE
     nanolog
     absl::flat_hash_map
@@ -234,6 +241,20 @@ target_link_libraries(hashmap_bench_test PRIVATE
 
 enable_testing()
 add_test(NAME hashmap_bench_test COMMAND hashmap_bench_test)
+
+# ============================================================================
+# CLHT String Key Benchmark
+# ============================================================================
+add_executable(clht_str_bench
+    ${SRC_DIR}/clht_string/clht_str_bench.cpp
+)
+target_include_directories(clht_str_bench PRIVATE ${SRC_DIR})
+target_compile_options(clht_str_bench PRIVATE
+    -march=native      # Enable AVX/SSE instructions
+    -msse4.2           # CRC32 instruction
+    -mavx2             # AVX2 for 32-byte SIMD
+)
+target_link_libraries(clht_str_bench PRIVATE atomic pthread)
 
 # ============================================================================
 # Install
