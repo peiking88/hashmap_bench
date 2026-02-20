@@ -399,6 +399,89 @@ target_compile_options(clht_str_bench PRIVATE
 target_link_libraries(clht_str_bench PRIVATE atomic pthread)
 
 # ============================================================================
+# libfork - Work-stealing task scheduler (header-only)
+# ============================================================================
+add_library(libfork INTERFACE)
+target_include_directories(libfork INTERFACE ${EXTERNAL_DIR}/libfork/include)
+target_compile_features(libfork INTERFACE cxx_std_20)
+
+# ============================================================================
+# CLHT libfork Parallel Tests
+# ============================================================================
+add_executable(clht_libfork_test
+    test/clht_libfork_test.cpp
+)
+
+target_include_directories(clht_libfork_test PRIVATE
+    ${SRC_DIR}
+    ${SRC_DIR}/clht_libfork
+    ${SRC_DIR}/clht_string
+    ${EXTERNAL_DIR}/stub_includes
+    ${EXTERNAL_DIR}/clht/include
+    ${EXTERNAL_DIR}/ssmem/include
+    ${EXTERNAL_DIR}/sspfd
+)
+
+target_compile_options(clht_libfork_test PRIVATE
+    -march=native
+    -msse4.2
+    -mavx2
+)
+
+target_link_libraries(clht_libfork_test PRIVATE
+    Catch2::Catch2WithMain
+    libfork
+    clht_lb
+    clht_lf
+    ssmem
+    folly_f14_minimal
+    absl::flat_hash_map
+    atomic
+    pthread
+)
+
+add_test(NAME clht_libfork_test COMMAND clht_libfork_test)
+
+# ============================================================================
+# CLHT libfork Benchmark Tests
+# ============================================================================
+add_executable(clht_libfork_benchmark
+    test/clht_libfork_benchmark.cpp
+)
+
+target_include_directories(clht_libfork_benchmark PRIVATE
+    ${SRC_DIR}
+    ${SRC_DIR}/clht_libfork
+    ${SRC_DIR}/clht_string
+    ${EXTERNAL_DIR}/stub_includes
+    ${EXTERNAL_DIR}/clht/include
+    ${EXTERNAL_DIR}/ssmem/include
+    ${EXTERNAL_DIR}/sspfd
+    ${EXTERNAL_DIR}/abseil-cpp
+    ${EXTERNAL_DIR}/folly
+)
+
+target_compile_options(clht_libfork_benchmark PRIVATE
+    -march=native
+    -msse4.2
+    -mavx2
+)
+
+target_link_libraries(clht_libfork_benchmark PRIVATE
+    Catch2::Catch2WithMain
+    libfork
+    clht_lb
+    clht_lf
+    ssmem
+    folly_f14_minimal
+    absl::flat_hash_map
+    atomic
+    pthread
+)
+
+add_test(NAME clht_libfork_benchmark COMMAND clht_libfork_benchmark --benchmark-samples 10 "[clht_libfork]")
+
+# ============================================================================
 # Install
 # ============================================================================
 install(TARGETS hashmap_bench RUNTIME DESTINATION bin)

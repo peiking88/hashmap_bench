@@ -40,3 +40,6 @@
 [submodule "external/sspfd"]
 	path = external/sspfd
 	url = https://github.com/trigonak/sspfd.git
+[submodule "external/libfork"]
+	path = external/libfork
+	url = https://bgithub.xyz/ConorWilliams/libfork
