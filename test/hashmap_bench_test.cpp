@@ -1,5 +1,5 @@
 /*
- * hashmap_bench_test - Catch2 test cases for hashmap_bench
+ * hashmap_test - Catch2 test cases for hashmap_bench
  */
 
 #include <catch2/catch_test_macros.hpp>

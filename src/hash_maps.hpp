@@ -15,6 +15,9 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
 
+// Folly F14
+#include <folly/container/F14Map.h>
+
 // Cista
 #include "cista/containers/hash_map.h"
 
@@ -32,8 +35,6 @@ extern "C" {
 // parallel-hashmap
 #include <parallel_hashmap/phmap.h>
 
-// Folly F14 (minimal build)
-#include <folly/container/F14Map.h>
 
 // OPIC Robin Hood Hash
 extern "C" {
@@ -48,16 +49,11 @@ extern "C" {
 #include <ssmem.h>
 }
 
-// CLHT String Key implementations
-#include "clht_string/clht_str_ptr.hpp"
-#include "clht_string/clht_str_inline.hpp"
-#include "clht_string/clht_str_pooled.hpp"
-#include "clht_string/clht_str_tagged.hpp"
-#include "clht_string/clht_str_final.hpp"
-
 #include "benchmark.hpp"
 
 namespace hashmap_bench {
+
+inline size_t clht_capacity_factor = 4;
 
 // ============================================================================
 // std::unordered_map wrapper
@@ -109,7 +105,7 @@ class FollyF14FastMapWrapper {
 public:
     using Map = folly::F14FastMap<Key, Value>;
     
-    static Map create(size_t capacity) { 
+    static Map create(size_t capacity) {
         Map m;
         m.reserve(capacity);
         return m;
@@ -362,107 +358,6 @@ public:
     }
     static void destroy(Map& ht) {
         clht_gc_destroy(ht);
-    }
-};
-
-// ============================================================================
-// CLHT String Key wrappers
-// ============================================================================
-
-class ClhtStrPtrWrapper {
-public:
-    using Map = clht_str::ClhtStrPtr*;
-    
-    static Map create(size_t capacity) {
-        return new clht_str::ClhtStrPtr(capacity * 2);
-    }
-    static void insert(Map& ht, const std::string& k, uint64_t v) {
-        ht->insert(k, v);
-    }
-    static uint64_t lookup(Map& ht, const std::string& k) {
-        uintptr_t val = ht->lookup(k);
-        return (val == UINTPTR_MAX) ? 0 : val;
-    }
-    static void destroy(Map& ht) {
-        delete ht;
-    }
-};
-
-class ClhtStrInlineWrapper {
-public:
-    using Map = clht_str::ClhtStrInline*;
-    
-    static Map create(size_t capacity) {
-        return new clht_str::ClhtStrInline(capacity * 2);
-    }
-    static void insert(Map& ht, const std::string& k, uint64_t v) {
-        ht->insert(k, v);
-    }
-    static uint64_t lookup(Map& ht, const std::string& k) {
-        uintptr_t val = ht->lookup(k);
-        return (val == UINTPTR_MAX) ? 0 : val;
-    }
-    static void destroy(Map& ht) {
-        delete ht;
-    }
-};
-
-class ClhtStrPooledWrapper {
-public:
-    using Map = clht_str::ClhtStrPooled*;
-    
-    static Map create(size_t capacity) {
-        // Estimate pool size: avg key length ~16 bytes, total elements
-        size_t pool_size = capacity * 24;
-        return new clht_str::ClhtStrPooled(capacity * 2, pool_size);
-    }
-    static void insert(Map& ht, const std::string& k, uint64_t v) {
-        ht->insert(k, v);
-    }
-    static uint64_t lookup(Map& ht, const std::string& k) {
-        uintptr_t val = ht->lookup(k);
-        return (val == UINTPTR_MAX) ? 0 : val;
-    }
-    static void destroy(Map& ht) {
-        delete ht;
-    }
-};
-
-class ClhtStrTaggedWrapper {
-public:
-    using Map = clht_str::ClhtStrTagged*;
-    
-    static Map create(size_t capacity) {
-        return new clht_str::ClhtStrTagged(capacity * 2);
-    }
-    static void insert(Map& ht, const std::string& k, uint64_t v) {
-        ht->insert(k, v);
-    }
-    static uint64_t lookup(Map& ht, const std::string& k) {
-        uintptr_t val = ht->lookup(k);
-        return (val == UINTPTR_MAX) ? 0 : val;
-    }
-    static void destroy(Map& ht) {
-        delete ht;
-    }
-};
-
-class ClhtStrFinalWrapper {
-public:
-    using Map = clht_str::ClhtStrFinal*;
-    
-    static Map create(size_t capacity) {
-        return new clht_str::ClhtStrFinal(capacity * 2);
-    }
-    static void insert(Map& ht, const std::string& k, uint64_t v) {
-        ht->insert(k, v);
-    }
-    static uint64_t lookup(Map& ht, const std::string& k) {
-        uintptr_t val = ht->lookup(k);
-        return (val == UINTPTR_MAX) ? 0 : val;
-    }
-    static void destroy(Map& ht) {
-        delete ht;
     }
 };
 

@@ -19,6 +19,7 @@ struct BenchmarkResult {
     double insert_time_sec;
     double query_time_sec;
     size_t memory_bytes;
+    std::string comments;
 };
 
 // Time measurement helper

@@ -135,22 +135,24 @@ uint64_t tomas_wang_int64_hash(uint64_t key) {
 }
 
 void print_result(const BenchmarkResult& result) {
-    std::cout << std::left << std::setw(30) << result.impl_name
-              << " | " << std::setw(12) << result.key_type
-              << " | " << std::setw(12) << result.num_elements
-              << " | Insert: " << std::fixed << std::setprecision(6) << result.insert_time_sec << "s"
-              << " | Query: " << result.query_time_sec << "s"
+    double insert_mops = result.num_elements / result.insert_time_sec / 1000000.0;
+    double query_mops = result.num_elements / result.query_time_sec / 1000000.0;
+    
+    std::cout << std::left << std::setw(28) << result.impl_name
+              << std::fixed << std::setprecision(6) << result.insert_time_sec << "\t"
+              << std::setprecision(6) << result.query_time_sec << "\t"
+              << std::setprecision(1) << insert_mops << "\t"
+              << std::setprecision(1) << query_mops << "\t"
+              << result.comments
               << std::endl;
 }
 
 void print_results(const std::vector<BenchmarkResult>& results) {
-    std::cout << "\n=== Benchmark Results ===\n";
-    std::cout << std::left << std::setw(30) << "Implementation"
-              << " | " << std::setw(12) << "Key Type"
-              << " | " << std::setw(12) << "Elements"
-              << " | Times"
-              << std::endl;
-    std::cout << std::string(100, '-') << std::endl;
+    std::cout << "\n";
+    std::cout << std::left 
+              << std::setw(28) << "Implementation" << "\t"
+              << "Insert (s)\tQuery (s)\tInsert Mops/s\tQuery Mops/s\tComments\n";
+    std::cout << std::string(100, '-') << "\n";
     
     for (const auto& result : results) {
         print_result(result);

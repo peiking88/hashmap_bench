@@ -1,68 +1,41 @@
 # hashmap_bench
 
-A comprehensive C++ hash map performance benchmark suite that compares multiple hash map implementations under various workloads.
+一个 C++ 哈希表性能基准测试套件，用统一的接口对多种实现进行插入与查询性能对比。
 
-## Features
+## 功能特性
 
-- **20+ Hash Map Implementations**: Standard library, Abseil, Folly, Google, and specialized libraries
-- **CLHT String Key Variants**: Multiple string key implementations with Tag+SIMD optimization
-- **Multiple Key Types**: Short strings (6B), medium strings (32B), long strings (256B), and 64-bit integers
-- **Consistent Benchmarking**: Unified wrapper interface for fair comparison
-- **Unit Tests**: Catch2-based test suite for correctness verification
+- **多实现对比**：标准库、Abseil、Folly、Google sparsehash、libcuckoo、parallel-hashmap、Cista、OPIC、CLHT、rhashmap 等
+- **多键类型**：短字符串（6B）、中字符串（32B）、长字符串（256B）、64 位整数
+- **可控参数**：元素规模、键类型、重复次数、实现选择、CLHT 容量因子
+- **统一封装**：统一的 wrapper 与输出格式，便于公平对比
+- **测试覆盖**：Catch2 测试覆盖 key 生成、哈希函数与基础正确性
 
-## Hash Map Implementations
+## 支持的实现
 
-| Implementation | Type | Key Types | Concurrent | Description |
-|----------------|------|-----------|------------|-------------|
-| `std::unordered_map` | Standard | string, int | ❌ | STL chained hash map |
-| `absl::flat_hash_map` | Abseil | string, int | ❌ | Swiss table, flat layout |
-| `absl::node_hash_map` | Abseil | string, int | ❌ | Swiss table, node-based |
-| `folly::F14FastMap` | Facebook | string, int | ❌ | SIMD-optimized F14 hash |
-| `cista::hash_map` | Cista | string, int | ❌ | High-performance, serialization-friendly |
-| `boost::flat_map` | Boost | string, int | ❌ | Sorted vector (ordered, not hash) |
-| `google::dense_hash_map` | Google | string, int | ❌ | Memory-efficient dense hash |
-| `google::sparse_hash_map` | Google | string, int | ❌ | Memory-efficient sparse hash |
-| `libcuckoo::cuckoohash_map` | libcuckoo | string, int | ✅ | Lock-free concurrent cuckoo hash |
-| `phmap::flat_hash_map` | parallel-hashmap | string, int | ❌ | Abseil-compatible alternative |
-| `phmap::parallel_flat_hash_map` | parallel-hashmap | string, int | ⚠️ | Sharded design, optional mutex |
-| `rhashmap` | C library | string only | ❌ | Robin Hood hashing |
-| `OPIC::robin_hood` | OPIC | int only | ❌ | Open-persistent Robin Hood |
-| `CLHT-LB` | EPFL | int only | ✅ | Cache-line hash table (lock-based) |
-| `CLHT-LF` | EPFL | int only | ✅ | Cache-line hash table (lock-free) |
-| **`CLHT-Str-Final`** | Custom | string only | ✅ | **Tag+SIMD, single-pass, best overall** |
-| `CLHT-Str-Tagged` | Custom | string only | ✅ | Tag+SIMD optimized |
-| `CLHT-Str-Inline` | Custom | string only | ✅ | Inline 16B, fast insert |
-| `CLHT-Str-Ptr` | Custom | string only | ✅ | Hash+Pointer, flexible allocator |
-| `CLHT-Str-Pooled` | Custom | string only | ✅ | Key pool, cache-friendly |
-| **`CLHT libfork`** | Custom+libfork | string, int | ✅ | **Parallel batch lookup (4x speedup)** |
+| Implementation | Key Types | 并发安全 | 说明 |
+|---|---|---|---|
+| `std::unordered_map` | string, int | ❌ | STL 链式哈希表 |
+| `absl::flat_hash_map` | string, int | ❌ | SwissTable，扁平布局 |
+| `absl::node_hash_map` | string, int | ❌ | SwissTable，节点布局 |
+| `folly::F14FastMap` | string, int | ❌ | F14 SIMD 优化 |
+| `google::dense_hash_map` | string, int | ❌ | 高密度哈希表 |
+| `google::sparse_hash_map` | string, int | ❌ | 稀疏哈希表 |
+| `libcuckoo::cuckoohash_map` | string, int | ✅ | 细粒度锁并发哈希 |
+| `phmap::flat_hash_map` | string, int | ❌ | parallel-hashmap 扁平实现 |
+| `phmap::parallel_flat_hash_map` | string, int | ⚠️ | 可选锁（模板参数） |
+| `cista::hash_map` | string, int | ❌ | 轻量高性能实现 |
+| `boost::container::flat_map` | string, int | ❌ | 有序向量（非哈希表） |
+| `rhashmap` | string | ❌ | C 库 Robin Hood 哈希 |
+| `OPIC::robin_hood` | int | ❌ | OPIC Robin Hood 哈希 |
+| `CLHT-LB` | int | ✅ | CLHT Lock-Based |
+| `CLHT-LF` | int | ✅ | CLHT Lock-Free |
 
-## CLHT String Key Implementations
+> 说明：基准测试目前为单线程执行，表格中的并发安全表示实现自身的线程安全能力。
 
-Six specialized string key implementations based on CLHT architecture:
-
-| Implementation | Description | Pros | Cons |
-|----------------|-------------|------|------|
-| **CLHT-Str-Final** | Single-pass + SIMD, 128B cache-line | Best insert & query (small scale) | Scale-sensitive |
-| CLHT-Str-Tagged | Tag+SIMD filtering, 128B cache-line | Good query performance | Two-pass insert |
-| CLHT-Str-Inline | Inline 16-byte storage | Fast insert, no alloc | Limited key length |
-| CLHT-Str-Ptr | Hash+Pointer storage | Flexible allocator | Extra pointer dereference |
-| CLHT-Str-Pooled | Key pool allocator | Cache-friendly | Pool management overhead |
-| **CLHT libfork** | Parallel batch operations | 4x lookup speedup | Serial insert only |
-
-### CLHT-Str-Final Optimizations
-
-Key optimizations for superior performance:
-
-1. **Single-Pass Traversal**: Merge existence check + empty slot search
-2. **SIMD Tag Matching**: Single instruction compares 4 tags
-3. **SIMD Empty Search**: Fast empty slot detection
-4. **Early Exit**: `outbound_overflow_count` avoids unnecessary traversal
-5. **Cache-line Aligned**: 128-byte bucket layout
-
-## Dependencies (Git Submodules)
+## 依赖（子模块）
 
 | Library | Repository |
-|---------|------------|
+|---|---|
 | abseil-cpp | https://bgithub.xyz/abseil/abseil-cpp.git |
 | Catch2 | https://bgithub.xyz/catchorg/Catch2.git |
 | container (Boost) | https://bgithub.xyz/boostorg/container.git |
@@ -75,340 +48,112 @@ Key optimizations for superior performance:
 | sparsehash | https://github.com/sparsehash/sparsehash.git |
 | opic | https://bgithub.xyz/dryman/opic |
 | rhashmap | https://bgithub.xyz/rmind/rhashmap |
-| **libfork** | https://bgithub.xyz/ConorWilliams/libfork |
 
-## Build
-
-```bash
-# Clone with submodules
-git clone --recursive https://bgithub.xyz/peiking88/hashmap_bench.git
-cd hashmap_bench
-
-# Or clone and update submodules separately
-git clone https://bgithub.xyz/peiking88/hashmap_bench.git
-cd hashmap_bench
-git submodule update --init --recursive
-
-# Build
-mkdir build && cd build
-cmake ..
-make -j$(nproc)
-```
-
-### Build Targets
-
-- `hashmap_bench` - Main benchmark executable
-- `hashmap_bench_test` - 基础单元测试
-- `clht_string_test` - CLHT 字符串键单元测试
-- `clht_benchmark_test` - CLHT 字符串键性能测试
-- `clht_int_test` - CLHT 整数键单元测试
-- `clht_int_benchmark_test` - CLHT 整数键性能测试
-- `clht_libfork_test` - CLHT libfork 并行单元测试
-- `clht_libfork_benchmark` - CLHT libfork 并行性能测试
-- `clht_str_bench` - CLHT string key standalone benchmark
-
-## Usage
-
-```bash
-# Run with default settings (2^20 = 1M short string keys)
-./hashmap_bench
-
-# Run with specific number of elements
-./hashmap_bench -n 22  # 2^22 = 4M elements
-
-# Run with specific key type
-./hashmap_bench -k int           # Integer keys
-./hashmap_bench -k mid_string    # 32-byte strings
-./hashmap_bench -k long_string   # 256-byte strings
-
-# Run all key types
-./hashmap_bench -a
-
-# Multiple repetitions
-./hashmap_bench -n 20 -k int -r 3
-
-# Show help
-./hashmap_bench -h
-```
-
-### Command Line Options
-
-| Option | Description | Default |
-|--------|-------------|---------|
-| `-n POWER` | Number of elements as power of 2 | 20 (1M) |
-| `-k KEYTYPE` | Key type: `short_string`, `mid_string`, `long_string`, `int` | `short_string` |
-| `-a` | Run all key types | - |
-| `-r N` | Number of repetitions | 1 |
-| `-p SEC` | Pause seconds between runs | 0 |
-| `-h` | Show help | - |
-
-## Run Tests
-
-项目包含 5 个测试目标，覆盖三类测试：单元测试、性能测试、比较测试。
-
-### 测试分类
-
-#### 1. 单元测试 (Unit Tests)
-验证 CLHT 实现的正确性，覆盖以下场景：
-- **基本功能**: 空 table 查询、单键插入/查询、多键插入
-- **更新行为**: CLHT 不支持更新已存在的键（设计特性）
-- **冲突处理**: 强制哈希冲突场景下的正确性
-- **键范围**: 短键、长键、边界键（空字符串、超长字符串）
-- **边界条件**: 最小/最大容量、最大值、溢出桶处理
-- **压力测试**: 大量键、随机顺序插入、高负载因子
-- **数据一致性**: 键不被修改、相似键区分
-- **删除操作**: 删除、删除后重新插入
-- **内存管理**: 多次创建/销毁、溢出桶处理
-
-#### 2. 性能测试 (Performance Tests)
-使用 Catch2 benchmark 框架测量吞吐量：
-- **Insert 性能**: 插入操作的耗时和吞吐量
-- **Lookup 性能**: 查询操作的耗时和吞吐量
-- **负载因子影响**: 25%、50%、75%、90% 负载因子下的性能
-- **键长度影响**: 8B、32B、128B、512B 键的性能
-- **混合操作**: 80% 查询 + 20% 插入场景
-- **规模测试**: 1K、10K、100K 元素规模
-- **吞吐量计算**: 精确计算 ops/sec
-
-#### 3. 比较测试 (Comparison Tests)
-CLHT 与主流 hashmap 实现的性能对比：
-- `std::unordered_map` - STL 标准实现
-- `absl::flat_hash_map` - Google Abseil Swiss Table
-- `folly::F14FastMap` - Facebook F14 SIMD 优化
-
-### 测试目标
-
-| 测试目标 | 类型 | 测试用例数 | 断言数 | 说明 |
-|----------|------|-----------|--------|------|
-| `hashmap_bench_test` | 单元测试 | 19 | 55 | 基础 hashmap 单元测试 |
-| `clht_string_test` | 单元测试 | 62 | 87405 | CLHT 字符串键单元测试 |
-| `clht_int_test` | 单元测试 | 25 | - | CLHT 整数键单元测试 |
-| `clht_benchmark_test` | 性能测试 | 10+ | - | CLHT 字符串键性能测试（含比较） |
-| `clht_int_benchmark_test` | 性能测试 | 10+ | - | CLHT 整数键性能测试（含比较） |
-| `clht_libfork_test` | 单元测试 | 18+ | - | CLHT libfork 并行单元测试 |
-| `clht_libfork_benchmark` | 性能测试 | 10+ | - | CLHT libfork 并行性能测试（含比较） |
-
-### 运行测试
-
-```bash
-# 运行所有测试
-cd build
-ctest --output-on-failure
-
-# 仅运行单元测试
-./hashmap_bench_test
-./clht_string_test
-./clht_int_test
-
-# 仅运行性能测试（需要更多时间）
-./clht_benchmark_test --benchmark-samples 10
-./clht_int_benchmark_test --benchmark-samples 10
-```
-
-### 最近测试结果
-
-```
-Test project /home/li/hashmap_bench/build
-
-    Start 1: hashmap_bench_test
-1/7 Test #1: hashmap_bench_test ...............   Passed    0.03 sec
-    Start 2: clht_string_test
-2/7 Test #2: clht_string_test .................   Passed    0.03 sec
-    Start 3: clht_benchmark_test
-3/7 Test #3: clht_benchmark_test ..............   Passed   25.80 sec
-    Start 4: clht_int_test
-4/7 Test #4: clht_int_test ....................   Passed    0.03 sec
-    Start 5: clht_int_benchmark_test
-5/7 Test #5: clht_int_benchmark_test ..........   Passed   13.23 sec
-    Start 6: clht_libfork_test
-6/7 Test #6: clht_libfork_test ................   Passed    0.04 sec
-    Start 7: clht_libfork_benchmark
-7/7 Test #7: clht_libfork_benchmark ...........   Passed   31.21 sec
-
-100% tests passed, 0 tests failed out of 7
-Total Test time (real) =  70.38 sec
-```
-
-## Project Structure
+## 项目结构
 
 ```
 hashmap_bench/
-├── CMakeLists.txt          # Build configuration
-├── README.md               # This file
-├── external/               # Git submodules (dependencies)
-│   ├── abseil-cpp/
-│   ├── Catch2/
-│   ├── cista/
-│   ├── clht/
-│   ├── container/
-│   ├── folly/
-│   ├── libcuckoo/
-│   ├── libfork/            # Work-stealing parallel scheduler
-│   ├── NanoLog/
-│   ├── opic/
-│   ├── parallel-hashmap/
-│   ├── rhashmap/
-│   └── sparsehash/
+├── CMakeLists.txt
+├── README.md
+├── external/               # 子模块依赖
+├── stubs/                  # 修复/替代头文件
 ├── src/
-│   ├── benchmark.cpp       # Benchmark utilities
-│   ├── benchmark.hpp       # Timer, key generation
-│   ├── hash_maps.hpp       # Hash map wrappers
-│   ├── hashmap_bench.cpp   # Main benchmark program
-│   ├── clht_string/        # CLHT string key implementations
-│   │   ├── clht_str_common.hpp    # Common utilities (hash, SIMD)
-│   │   ├── clht_str_ptr.hpp       # Hash+Pointer storage
-│   │   ├── clht_str_inline.hpp    # Inline 16-byte storage
-│   │   ├── clht_str_pooled.hpp    # Key pool allocator
-│   │   ├── clht_str_tagged.hpp    # Tag+SIMD optimized
-│   │   ├── clht_str_final.hpp     # Single-pass optimized (best)
-│   │   └── clht_str_bench.cpp     # Standalone benchmark
-│   └── clht_libfork/       # CLHT libfork parallel implementations
-│       ├── clht_libfork_str.hpp   # Parallel string key operations
-│       └── clht_libfork_int.hpp   # Parallel integer key operations
+│   ├── benchmark.cpp
+│   ├── benchmark.hpp
+│   ├── hash_maps.hpp
+│   └── hashmap_bench.cpp
 └── test/
-    ├── hashmap_bench_test.cpp      # 基础 hashmap 单元测试
-    ├── clht_string_test.cpp        # CLHT 字符串键单元测试 (62 cases)
-    ├── clht_benchmark_test.cpp     # CLHT 字符串键性能测试
-    ├── clht_int_test.cpp           # CLHT 整数键单元测试 (25 cases)
-    ├── clht_int_benchmark_test.cpp # CLHT 整数键性能测试
-    ├── clht_libfork_test.cpp       # CLHT libfork 并行单元测试
-    └── clht_libfork_benchmark.cpp  # CLHT libfork 并行性能测试
+    └── hashmap_bench_test.cpp
 ```
 
-## Benchmark Results
+## 构建
 
-Test environment: Linux, C++20, O3 optimization
+```bash
+git clone --recursive https://bgithub.xyz/peiking88/hashmap_bench.git
+cd hashmap_bench
 
-### Integer Keys (int64) - 1M Elements
-
-| Implementation | Insert (s) | Query (s) | Insert Mops/s | Query Mops/s | Concurrent |
-|----------------|------------|-----------|---------------|--------------|------------|
-| **google::dense_hash_map** | 0.002230 | 0.002013 | **470.4** | **521.1** | ❌ |
-| **CLHT-LB** | 0.003944 | 0.002244 | **266.0** | **467.3** | ✅ Lock-Based |
-| **CLHT-LF** | 0.004757 | 0.003306 | **220.3** | **317.2** | ✅ Lock-Free |
-| **CLHT libfork (8t)** | 0.0649 | 0.0024 | 16.2 | **437** | ✅ **Parallel Lookup** |
-| boost::flat_map | 0.013117 | 0.024905 | 80.0 | 42.1 | ❌ |
-| google::sparse_hash_map | 0.024970 | 0.009661 | 42.0 | 108.6 | ❌ |
-| std::unordered_map | 0.032244 | 0.002028 | 32.5 | 517.2 | ❌ |
-| phmap::parallel_flat_hash_map | 0.026494 | 0.026416 | 39.6 | 39.7 | ⚠️ Optional |
-| phmap::flat_hash_map | 0.038006 | 0.015987 | 27.6 | 65.6 | ❌ |
-| folly::F14FastMap | 0.043801 | 0.028675 | 23.9 | 36.6 | ❌ |
-| libcuckoo::cuckoohash_map | 0.054017 | 0.008153 | 19.4 | 128.7 | ✅ |
-| absl::node_hash_map | 0.079278 | 0.028938 | 13.2 | 36.2 | ❌ |
-| absl::flat_hash_map | 0.081118 | 0.032465 | 12.9 | 32.3 | ❌ |
-| cista::hash_map | 0.120215 | 0.010070 | 8.7 | 104.1 | ❌ |
-| OPIC::robin_hood | 0.122422 | 0.063377 | 8.6 | 16.6 | ❌ |
-
-### String Keys (6-16 bytes) - 262K Elements
-
-| Implementation | Insert (s) | Query (s) | Insert Mops/s | Query Mops/s | Concurrent |
-|----------------|------------|-----------|---------------|--------------|------------|
-| **CLHT-Str-Final** | 0.00521 | 0.00276 | **50.3** | **95.0** | ✅ Single-pass+SIMD |
-| folly::F14FastMap | 0.00692 | 0.00237 | 37.9 | 110.7 | ❌ |
-| CLHT-Str-Inline | 0.00908 | 0.00697 | 28.9 | 37.6 | ✅ Inline 16B |
-| CLHT-Str-Tagged | 0.01458 | 0.00296 | 18.0 | 88.6 | ✅ Tag+SIMD |
-| absl::node_hash_map | 0.01144 | 0.00279 | 22.9 | 94.0 | ❌ |
-| std::unordered_map | 0.03530 | 0.01306 | 7.4 | 20.1 | ❌ |
-
-### String Keys (6-16 bytes) - 1M Elements
-
-| Implementation | Insert (s) | Query (s) | Insert Mops/s | Query Mops/s | Concurrent |
-|----------------|------------|-----------|---------------|--------------|------------|
-| folly::F14FastMap | 0.0324 | 0.0118 | 32.4 | **88.7** | ❌ |
-| **CLHT libfork (8t)** | 0.0822 | 0.0140 | 12.8 | **74.9** | ✅ **Parallel Lookup** |
-| CLHT-Str-Inline | 0.0322 | 0.0339 | **32.6** | 30.9 | ✅ |
-| CLHT-Str-Ptr | 0.0528 | 0.0300 | 19.9 | 34.9 | ✅ |
-| CLHT-Str-Final | 0.0647 | 0.0370 | 16.2 | 28.3 | ✅ |
-| absl::flat_hash_map | 0.0997 | 0.0435 | 10.5 | 24.1 | ❌ |
-| std::unordered_map | 0.132 | 0.0586 | 7.9 | 17.9 | ❌ |
-
-### Key Findings
-
-1. **Best for Integer Keys**: `google::dense_hash_map` (non-concurrent), `CLHT-LB/LF` (concurrent), `CLHT libfork` (parallel)
-2. **Best for String Keys**: `CLHT-Str-Final` (small scale), `CLHT libfork` (parallel lookup), `folly::F14FastMap` (non-concurrent)
-3. **Parallel Lookup Speedup**: CLHT libfork achieves **4x** speedup over serial for both Integer and String keys
-4. **Concurrent Safety**: All CLHT variants provide thread-safe operations
-
-## Concurrency Support Summary
-
-| Implementation | Thread Safe | Mechanism |
-|----------------|-------------|-----------|
-| CLHT-Str-* (all) | ✅ Yes | Lock-based bucket locks |
-| CLHT-LB | ✅ Yes | Lock-based |
-| CLHT-LF | ✅ Yes | Lock-free |
-| **CLHT libfork** | ✅ Yes | **Parallel batch ops (4x speedup)** |
-| libcuckoo::cuckoohash_map | ✅ Yes | Fine-grained locks |
-| phmap::parallel_flat_hash_map | ⚠️ Optional | Submap-level mutex (template param) |
-| All others | ❌ No | External sync required |
-
-## Parallel Operations with libfork
-
-CLHT 现已集成 [libfork](https://github.com/ConorWilliams/libfork) 并行调度器，提供高效的批量并行操作。
-
-### libfork 特性
-
-- **Lock-free + Wait-free 任务调度**
-- **基于 C++20 协程**，零分配 Cactus-Stack
-- **NUMA-aware Work-Stealing 调度器**
-- **任务开销极低**：相比函数调用仅 ~10x 开销
-- **性能优势**：相比 TBB 快 7.5x，相比 OpenMP 快 24x
-
-### 并行批量操作 API
-
-```cpp
-#include "clht_libfork_str.hpp"
-#include "clht_libfork_int.hpp"
-
-// 创建并行 CLHT 实例
-clht_libfork::ParallelClhtStr ht_str(100000);  // 自动使用所有核心
-clht_libfork::ParallelClhtInt ht_int(100000, 8); // 指定 8 线程
-
-// 并行批量插入
-std::vector<std::string> keys = {...};
-std::vector<uintptr_t> values = {...};
-ht_str.batch_insert(keys, values);
-
-// 并行批量查询
-std::vector<uintptr_t> results;
-ht_str.batch_lookup(keys, results);
-
-// 并行批量删除
-std::vector<bool> removed;
-ht_str.batch_remove(keys, removed);
-
-// 混合操作 (80% 查询 + 20% 插入)
-ht_str.batch_mixed(keys, values, results, 0.2);
+cmake -S . -B build
+cmake --build build -j
 ```
 
-### 优化策略
+### 构建目标
+
+- `hashmap_bench`：主基准测试程序
+- `hashmap_test`：Catch2 单元测试
+
+## 运行基准测试
+
+```bash
+# 显示帮助
+./build/hashmap_bench -h
+
+# 默认模式（-n）：short_string + int
+./build/hashmap_bench -n 20
+
+# 指定键类型
+./build/hashmap_bench -k short_string
+./build/hashmap_bench -k mid_string
+./build/hashmap_bench -k long_string
+./build/hashmap_bench -k int
+
+# 运行全部键类型 + 全部实现
+./build/hashmap_bench -a
+
+# 指定实现（示例）
+./build/hashmap_bench -k int -i dense_hash_map
+
+# 重复次数与插入/查询间隔
+./build/hashmap_bench -n 20 -r 3 -p 1
+
+# 调整 CLHT 容量因子
+./build/hashmap_bench -k int -i CLHT_LB -c 4
+```
+
+### 命令行参数
+
+| Option | 说明 | 默认值 |
+|---|---|---|
+| `-n POWER` | 元素数量为 \(2^{POWER}\) | 20 |
+| `-k KEYTYPE` | `short_string` / `mid_string` / `long_string` / `int` | `short_string` |
+| `-a` | 运行所有键类型与实现 | - |
+| `-i IMPL` | 仅运行指定实现 | - |
+| `-r N` | 重复次数 | 1 |
+| `-p SEC` | 插入和查询之间暂停秒数 | 0 |
+| `-c FACTOR` | CLHT 容量因子 | 4 |
+| `-h` | 显示帮助 | - |
+
+### `-i` 可用实现名
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│  Insert: SERIAL  (CLHT bucket 锁限制并行扩展)                    │
-│  Lookup: PARALLEL (无锁读取，近线性扩展)                         │
-└─────────────────────────────────────────────────────────────────┘
+std_unordered_map
+absl_flat_hash_map
+absl_node_hash_map
+folly_F14FastMap
+cista_hash_map
+boost_flat_map
+dense_hash_map
+sparse_hash_map
+cuckoohash_map
+rhashmap
+phmap_flat
+phmap_parallel
+CLHT_LB
+CLHT_LF
+OPIC
 ```
 
-### 并行 Lookup 性能对比 (N = 1M)
+> 提示：部分实现仅支持 `string` 或 `int` 键类型。
 
-| 实现 | 耗时 (ms) | 吞吐量 (Mops/s) | 线程数 | 说明 |
-|------|-----------|-----------------|--------|------|
-| **CLHT libfork** | **14.0** | **74.9** | 8 | String Key 并发最优 |
-| folly::F14FastMap | 11.8 | 88.7 | 1 | 非并发最优 |
-| CLHT-Str-Final | 37.0 | 28.3 | 1 | 串行基准 |
+## 运行测试
 
-| 实现 | 耗时 (ms) | 吞吐量 (Mops/s) | 线程数 | 说明 |
-|------|-----------|-----------------|--------|------|
-| **CLHT libfork** | **2.4** | **437** | 8 | Integer Key 并发最优 |
-| CLHT-LB | 2.09 | 502 | 1 | 串行最优 |
-| google::dense_hash_map | 2.30 | 456 | 1 | 非并发最优 |
+```bash
+# 直接运行可执行文件
+./build/hashmap_test
 
-### 使用建议
-
-- **并发场景**: CLHT-LB/LF (Integer) 或 CLHT libfork (批量 Lookup)
-- **非并发场景**: folly::F14FastMap 或 google::dense_hash_map
-- **批量 Lookup**: libfork 并行版本获得 4x 加速
-- **混合工作负载**: `batch_mixed()` 自动采用最优策略
+# 或使用 CTest
+cd build
+ctest --output-on-failure
+```
 
 ## License
 
