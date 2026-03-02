@@ -135,7 +135,8 @@ add_library(opic STATIC
     ${OPIC_DIR}/common/op_log.c
 )
 target_include_directories(opic PUBLIC
-    ${CMAKE_SOURCE_DIR}/stubs  # stub log4c.h and fixed op_assert.h (must be first)
+    ${CMAKE_SOURCE_DIR}/stubs/opic  # config.h (must be first)
+    ${CMAKE_SOURCE_DIR}/stubs  # stub log4c.h and fixed op_assert.h
     ${EXTERNAL_DIR}/opic
 )
 target_compile_options(opic PRIVATE -include stddef.h)
