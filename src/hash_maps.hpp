@@ -6,6 +6,7 @@
 // Standard library
 #include <unordered_map>
 #include <unordered_set>
+#include <map>
 
 // Google sparsehash
 #include <google/dense_hash_map>
@@ -14,9 +15,11 @@
 // Abseil
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/node_hash_map.h"
+#include "absl/container/btree_map.h"
 
 // Folly F14
 #include <folly/container/F14Map.h>
+#include <folly/container/sorted_vector_types.h>
 
 // Cista
 #include "cista/containers/hash_map.h"
@@ -62,6 +65,7 @@ template <typename Key, typename Value>
 class StdUnorderedMapWrapper {
 public:
     using Map = std::unordered_map<Key, Value>;
+    static constexpr bool is_ordered = false;
     
     static Map create(size_t capacity) { return Map(capacity); }
     static void insert(Map& m, const Key& k, Value v) { m[k] = v; }
@@ -139,12 +143,67 @@ public:
 };
 
 // ============================================================================
-// boost::container::flat_map wrapper
+// boost::container::flat_map wrapper (ordered)
 // ============================================================================
 template <typename Key, typename Value>
 class BoostFlatMapWrapper {
 public:
     using Map = boost::container::flat_map<Key, Value>;
+    static constexpr bool is_ordered = true;
+    
+    static Map create(size_t capacity) { 
+        Map m;
+        m.reserve(capacity);
+        return m;
+    }
+    static void insert(Map& m, const Key& k, Value v) { 
+        m.emplace(k, v);
+    }
+    static Value lookup(Map& m, const Key& k) { 
+        auto it = m.find(k);
+        return it->second;
+    }
+    static void destroy(Map&) {}
+};
+
+// ============================================================================
+// std::map wrapper (ordered)
+// ============================================================================
+template <typename Key, typename Value>
+class StdMapWrapper {
+public:
+    using Map = std::map<Key, Value>;
+    static constexpr bool is_ordered = true;
+    
+    static Map create(size_t) { return Map(); }
+    static void insert(Map& m, const Key& k, Value v) { m[k] = v; }
+    static Value lookup(Map& m, const Key& k) { return m.at(k); }
+    static void destroy(Map&) {}
+};
+
+// ============================================================================
+// absl::btree_map wrapper (ordered)
+// ============================================================================
+template <typename Key, typename Value>
+class AbslBtreeMapWrapper {
+public:
+    using Map = absl::btree_map<Key, Value>;
+    static constexpr bool is_ordered = true;
+    
+    static Map create(size_t) { return Map(); }
+    static void insert(Map& m, const Key& k, Value v) { m[k] = v; }
+    static Value lookup(Map& m, const Key& k) { return m.at(k); }
+    static void destroy(Map&) {}
+};
+
+// ============================================================================
+// folly::sorted_vector_map wrapper (ordered)
+// ============================================================================
+template <typename Key, typename Value>
+class FollySortedVectorMapWrapper {
+public:
+    using Map = folly::sorted_vector_map<Key, Value>;
+    static constexpr bool is_ordered = true;
     
     static Map create(size_t capacity) { 
         Map m;

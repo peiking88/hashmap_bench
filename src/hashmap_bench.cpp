@@ -191,8 +191,8 @@ std::vector<BenchmarkResult> run_all_string_benchmarks(
     
     LOG_DEBUG( "Generated %zu keys of type %s", keys.size(), key_type.c_str());
     
-    // Benchmark each implementation
-    std::cout << "\n=== String Key Benchmarks (Key Type: " << key_type << ") ===\n";
+    // Unordered (hash) containers
+    std::cout << "\n=== Unordered Containers - String Key (" << key_type << ") ===\n";
     
     // std::unordered_map
     results.push_back(benchmark_string_keys<StdUnorderedMapWrapper<std::string, uint64_t>>(
@@ -223,10 +223,6 @@ std::vector<BenchmarkResult> run_all_string_benchmarks(
         results.push_back(benchmark_string_keys<CistaHashMapWrapper<std::string, uint64_t>>(
             "cista::hash_map", key_type, keys, "KV: string/uintptr_t"));
         
-        // boost::container::flat_map
-        results.push_back(benchmark_string_keys<BoostFlatMapWrapper<std::string, uint64_t>>(
-            "boost::flat_map", key_type, keys, "KV: string/uintptr_t"));
-        
         // libcuckoo::cuckoohash_map
         results.push_back(benchmark_string_keys<CuckooHashMapWrapper<std::string, uint64_t>>(
             "libcuckoo::cuckoohash_map", key_type, keys, "KV: string/uintptr_t"));
@@ -243,6 +239,25 @@ std::vector<BenchmarkResult> run_all_string_benchmarks(
         results.push_back(benchmark_string_keys<PhmapParallelHashMapWrapper<std::string, uint64_t>>(
             "phmap::parallel_flat_hash_map", key_type, keys, "KV: string/uintptr_t"));
     }
+
+    // Ordered containers
+    std::cout << "\n=== Ordered Containers - String Key (" << key_type << ") ===\n";
+    
+    // std::map
+    results.push_back(benchmark_string_keys<StdMapWrapper<std::string, uint64_t>>(
+        "std::map", key_type, keys, "KV: string/uintptr_t, Ordered"));
+    
+    // absl::btree_map
+    results.push_back(benchmark_string_keys<AbslBtreeMapWrapper<std::string, uint64_t>>(
+        "absl::btree_map", key_type, keys, "KV: string/uintptr_t, Ordered"));
+    
+    // boost::container::flat_map
+    results.push_back(benchmark_string_keys<BoostFlatMapWrapper<std::string, uint64_t>>(
+        "boost::flat_map", key_type, keys, "KV: string/uintptr_t, Ordered"));
+    
+    // folly::sorted_vector_map
+    results.push_back(benchmark_string_keys<FollySortedVectorMapWrapper<std::string, uint64_t>>(
+        "folly::sorted_vector_map", key_type, keys, "KV: string/uintptr_t, Ordered"));
     
     print_results(results);
     return results;
@@ -257,7 +272,8 @@ std::vector<BenchmarkResult> run_all_int_benchmarks(int num_power, bool run_all_
     
     LOG_DEBUG( "Generated %zu int keys", keys.size());
     
-    std::cout << "\n=== Integer Key Benchmarks ===\n";
+    // Unordered (hash) containers
+    std::cout << "\n=== Unordered Containers - Integer Key ===\n";
     
     // std::unordered_map
     results.push_back(benchmark_int_keys<StdUnorderedMapWrapper<uint64_t, uint64_t>>(
@@ -275,16 +291,6 @@ std::vector<BenchmarkResult> run_all_int_benchmarks(int num_power, bool run_all_
     results.push_back(benchmark_int_keys<FollyF14FastMapWrapper<uint64_t, uint64_t>>(
         "folly::F14FastMap", keys, "KV: int64/uintptr_t"));
     
-    if (run_all_impls) {
-        // cista::hash_map
-        results.push_back(benchmark_int_keys<CistaHashMapWrapper<uint64_t, uint64_t>>(
-            "cista::hash_map", keys, "KV: int64/uintptr_t"));
-        
-        // boost::container::flat_map
-        results.push_back(benchmark_int_keys<BoostFlatMapWrapper<uint64_t, uint64_t>>(
-            "boost::flat_map", keys, "KV: int64/uintptr_t"));
-    }
-    
     // google::dense_hash_map
     results.push_back(benchmark_int_keys<DenseHashMapWrapper<uint64_t, uint64_t>>(
         "google::dense_hash_map", keys, "KV: int64/uintptr_t"));
@@ -298,6 +304,10 @@ std::vector<BenchmarkResult> run_all_int_benchmarks(int num_power, bool run_all_
     results.push_back(benchmark_int_keys<ClhtLfWrapper>("CLHT-LF", keys, "✅ Lock-Free, KV: int64/uintptr_t"));
 
     if (run_all_impls) {
+        // cista::hash_map
+        results.push_back(benchmark_int_keys<CistaHashMapWrapper<uint64_t, uint64_t>>(
+            "cista::hash_map", keys, "KV: int64/uintptr_t"));
+        
         // libcuckoo::cuckoohash_map
         results.push_back(benchmark_int_keys<CuckooHashMapWrapper<uint64_t, uint64_t>>(
             "libcuckoo::cuckoohash_map", keys, "KV: int64/uintptr_t"));
@@ -314,6 +324,25 @@ std::vector<BenchmarkResult> run_all_int_benchmarks(int num_power, bool run_all_
         results.push_back(benchmark_int_keys<PhmapParallelHashMapWrapper<uint64_t, uint64_t>>(
             "phmap::parallel_flat_hash_map", keys, "KV: int64/uintptr_t"));
     }
+
+    // Ordered containers
+    std::cout << "\n=== Ordered Containers - Integer Key ===\n";
+    
+    // std::map
+    results.push_back(benchmark_int_keys<StdMapWrapper<uint64_t, uint64_t>>(
+        "std::map", keys, "KV: int64/uintptr_t, Ordered"));
+    
+    // absl::btree_map
+    results.push_back(benchmark_int_keys<AbslBtreeMapWrapper<uint64_t, uint64_t>>(
+        "absl::btree_map", keys, "KV: int64/uintptr_t, Ordered"));
+    
+    // boost::container::flat_map
+    results.push_back(benchmark_int_keys<BoostFlatMapWrapper<uint64_t, uint64_t>>(
+        "boost::flat_map", keys, "KV: int64/uintptr_t, Ordered"));
+    
+    // folly::sorted_vector_map
+    results.push_back(benchmark_int_keys<FollySortedVectorMapWrapper<uint64_t, uint64_t>>(
+        "folly::sorted_vector_map", keys, "KV: int64/uintptr_t, Ordered"));
     
     print_results(results);
     return results;
@@ -337,15 +366,14 @@ void print_help(const char* program) {
         "  -c FACTOR     CLHT capacity factor (default: 4)\n"
         "  -h            Show this help\n"
         "\n"
-        "Implementations:\n"
+        "Unordered (Hash) Implementations:\n"
         "  std_unordered_map      - std::unordered_map\n"
         "  absl_flat_hash_map     - absl::flat_hash_map\n"
         "  absl_node_hash_map     - absl::node_hash_map\n"
         "  folly_F14FastMap       - folly::F14FastMap\n"
-        "  cista_hash_map         - cista::hash_map\n"
-        "  boost_flat_map         - boost::container::flat_map\n"
         "  dense_hash_map         - google::dense_hash_map\n"
         "  sparse_hash_map        - google::sparse_hash_map\n"
+        "  cista_hash_map         - cista::hash_map\n"
         "  cuckoohash_map         - libcuckoo::cuckoohash_map\n"
         "  rhashmap               - rhashmap (C Robin Hood hash)\n"
         "  phmap_flat             - phmap::flat_hash_map\n"
@@ -353,6 +381,12 @@ void print_help(const char* program) {
         "  CLHT_LB                - CLHT Lock-Based (int keys only)\n"
         "  CLHT_LF                - CLHT Lock-Free (int keys only)\n"
         "  OPIC                   - OPIC Robin Hood Hash (int keys only)\n"
+        "\n"
+        "Ordered Implementations:\n"
+        "  std_map                - std::map\n"
+        "  absl_btree_map         - absl::btree_map\n"
+        "  boost_flat_map         - boost::container::flat_map\n"
+        "  folly_sorted_vector_map- folly::sorted_vector_map\n"
         << std::endl;
 }
 

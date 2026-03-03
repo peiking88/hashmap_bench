@@ -1,16 +1,19 @@
 # hashmap_bench
 
-一个 C++ 哈希表性能基准测试套件，用统一的接口对多种实现进行插入与查询性能对比。
+一个 C++ 关联容器性能基准测试套件，对多种**有序**和**无序**实现进行插入与查询性能对比。
 
 ## 功能特性
 
-- **多实现对比**：标准库、Abseil、Folly、Google sparsehash、libcuckoo、parallel-hashmap、Cista、OPIC、CLHT、rhashmap 等
+- **多实现对比**：无序哈希表 + 有序容器，标准库、Abseil、Folly、Google sparsehash、libcuckoo 等
 - **多键类型**：短字符串（6B）、中字符串（32B）、长字符串（256B）、64 位整数
-- **可控参数**：元素规模、键类型、重复次数、实现选择、CLHT 容量因子
+- **分类输出**：有序/无序容器分开比较，便于场景选型
+- **可控参数**：元素规模、键类型、重复次数、实现选择
 - **统一封装**：统一的 wrapper 与输出格式，便于公平对比
 - **测试覆盖**：Catch2 测试覆盖 key 生成、哈希函数与基础正确性
 
 ## 支持的实现
+
+### 无序容器（哈希表）
 
 | Implementation | Key Types | 并发安全 | 说明 |
 |---|---|---|---|
@@ -24,13 +27,25 @@
 | `phmap::flat_hash_map` | string, int | ❌ | parallel-hashmap 扁平实现 |
 | `phmap::parallel_flat_hash_map` | string, int | ⚠️ | 可选锁（模板参数） |
 | `cista::hash_map` | string, int | ❌ | 轻量高性能实现 |
-| `boost::container::flat_map` | string, int | ❌ | 有序向量（非哈希表） |
 | `rhashmap` | string | ❌ | C 库 Robin Hood 哈希 |
 | `OPIC::robin_hood` | int | ❌ | OPIC Robin Hood 哈希 |
 | `CLHT-LB` | int | ✅ | CLHT Lock-Based |
 | `CLHT-LF` | int | ✅ | CLHT Lock-Free |
 
-> 说明：基准测试目前为单线程执行，表格中的并发安全表示实现自身的线程安全能力。
+### 有序容器
+
+| Implementation | Key Types | 数据结构 | 插入复杂度 | 查找复杂度 | 说明 |
+|---|---|---|---|---|---|
+| `std::map` | string, int | 红黑树 | O(log n) | O(log n) | 标准库平衡树 |
+| `absl::btree_map` | string, int | B 树 | O(log n) | O(log n) | 缓存友好的 B 树 |
+| `boost::flat_map` | string, int | 排序向量 | O(n) | O(log n) | 连续内存，适合静态数据 |
+| `folly::sorted_vector_map` | string, int | 排序向量 | O(n) | O(log n) | 连续内存，适合静态数据 |
+
+> **选型建议**：
+> - 静态数据（初始化后不变）：`boost::flat_map` 或 `folly::sorted_vector_map`
+> - 动态数据（频繁插入删除）：`std::map` 或 `absl::btree_map`
+> - 大数据集 + 缓存敏感：`absl::btree_map`
+> - 仅需快速查找：无序哈希表
 
 ## 依赖（子模块）
 
@@ -113,8 +128,8 @@ cmake --build build -j
 
 | Option | 说明 | 默认值 |
 |---|---|---|
-| `-n POWER` | 元素数量为 \(2^{POWER}\) | 20 |
-| `-k KEYTYPE` | `short_string` / `mid_string` / `long_string` / `int` | `short_string` |
+| `-n POWER` | 元素数量为 2^POWER | 20 |
+| `-k KEYTYPE` | short_string / mid_string / long_string / int | short_string |
 | `-a` | 运行所有键类型与实现 | - |
 | `-i IMPL` | 仅运行指定实现 | - |
 | `-r N` | 重复次数 | 1 |
@@ -124,15 +139,15 @@ cmake --build build -j
 
 ### `-i` 可用实现名
 
+**无序容器：**
 ```
 std_unordered_map
 absl_flat_hash_map
 absl_node_hash_map
 folly_F14FastMap
-cista_hash_map
-boost_flat_map
 dense_hash_map
 sparse_hash_map
+cista_hash_map
 cuckoohash_map
 rhashmap
 phmap_flat
@@ -142,7 +157,15 @@ CLHT_LF
 OPIC
 ```
 
-> 提示：部分实现仅支持 `string` 或 `int` 键类型。
+**有序容器：**
+```
+std_map
+absl_btree_map
+boost_flat_map
+folly_sorted_vector_map
+```
+
+> 提示：部分实现仅支持 string 或 int 键类型。
 
 ## 运行测试
 
