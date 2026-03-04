@@ -13,11 +13,73 @@ cd "$SCRIPT_DIR"
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-log_info() { echo -e "${GREEN}[INFO]${NC} $1"; }
+log_info() { echo -e "${BLUE}[INFO]${NC} $1"; }
+log_ok() { echo -e "${GREEN}[OK]${NC} $1"; }
 log_warn() { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
+
+# Get number of parallel jobs
+get_nproc() { nproc 2>/dev/null || echo 4; }
+
+# Count compilation targets in build directory
+count_targets() {
+    local build_dir="$1"
+    # Count all compile commands from compile_commands.json if available
+    if [ -f "$build_dir/compile_commands.json" ]; then
+        grep -c '"command":' "$build_dir/compile_commands.json" 2>/dev/null || echo 100
+    else
+        # Fallback: count from build.make files
+        find "$build_dir" -name "build.make" -exec grep -h "\.cpp\.o:\|\.c\.o:" {} \; 2>/dev/null | \
+            grep -v "flags.make" | grep -v "compiler_depend" | sort -u | wc -l
+    fi
+}
+
+# ============================================================================
+# Compile with single-line progress display
+# Shows [current/total] format, single-line update in terminal
+# ============================================================================
+compile_progress() {
+    local prefix="$1"
+    local total="$2"
+    
+    if [ -t 1 ]; then
+        stdbuf -oL -eL awk -v prefix="$prefix" -v total="$total" -v BLUE='\033[0;34m' -v NC='\033[0m' '
+        BEGIN { count = 0 }
+        /Building C[XX]+ object/ {
+            count++
+            match($0, /object [^ ]+/)
+            file = substr($0, RSTART+7, RLENGTH-7)
+            printf "\r\033[K%s[INFO]%s %s [%d/%d] %s", BLUE, NC, prefix, count, total, file
+            fflush(stdout)
+        }
+        /Linking/ {
+            match($0, /(executable|shared library) ([^ ]+)/)
+            file = substr($0, RSTART, RLENGTH)
+            printf "\r\033[K%s[INFO]%s %s [%d/%d] linking %s", BLUE, NC, prefix, count, total, file
+            fflush(stdout)
+        }
+        END {
+            printf "\r\033[K%s[INFO]%s %s [%d/%d] done.\n", BLUE, NC, prefix, count, (total > count ? total : count)
+        }
+        '
+    else
+        awk -v prefix="$prefix" -v total="$total" '
+        BEGIN { count = 0 }
+        /Building C[XX]+ object/ {
+            count++
+            match($0, /object [^ ]+/)
+            file = substr($0, RSTART+7, RLENGTH-7)
+            printf "[INFO] %s [%d/%d] %s\n", prefix, count, total, file
+        }
+        END {
+            printf "[INFO] %s [%d/%d] done.\n", prefix, count, (total > count ? total : count)
+        }
+        '
+    fi
+}
 
 # ============================================================================
 # Step 1: Initialize all submodules
@@ -25,10 +87,8 @@ log_error() { echo -e "${RED}[ERROR]${NC} $1"; }
 init_submodules() {
     log_info "Initializing submodules..."
     
-    # Sync submodule URLs from .gitmodules
     git submodule sync --quiet
     
-    # List of submodules that may need manual checkout
     local submodules=(
         "external/rhashmap"
         "external/ssmem"
@@ -47,20 +107,33 @@ init_submodules() {
         "external/libfork"
     )
     
+    local total=${#submodules[@]}
+    local current=0
+    local fetched=0
+    
     for sm in "${submodules[@]}"; do
+        current=$((current + 1))
+        local sm_name=$(basename "$sm")
+        
         if [ ! -f "$sm/.git" ] || [ -z "$(ls -A "$sm" 2>/dev/null | grep -v '^.git$')" ]; then
-            log_info "Fetching submodule: $sm"
+            fetched=$((fetched + 1))
+            printf "\r\033[K${BLUE}[INFO]${NC} Submodules [%d/%d] Fetching: %s" "$current" "$total" "$sm_name"
             git submodule update --init -- "$sm" 2>/dev/null || {
-                # Fallback: manual checkout
                 cd "$sm"
                 git fetch origin 2>/dev/null || true
                 git checkout HEAD 2>/dev/null || true
                 cd "$SCRIPT_DIR"
             }
+        else
+            printf "\r\033[K${BLUE}[INFO]${NC} Submodules [%d/%d] Checking: %s" "$current" "$total" "$sm_name"
         fi
     done
     
-    log_info "Submodules initialized."
+    printf "\r\033[K${BLUE}[INFO]${NC} Submodules [%d/%d] done.\n" "$total" "$total"
+    
+    if [ $fetched -gt 0 ]; then
+        log_ok "Fetched $fetched submodule(s)"
+    fi
 }
 
 # ============================================================================
@@ -71,7 +144,6 @@ generate_opic_config() {
     local config_file="$config_dir/config.h"
     
     if [ -f "$config_file" ]; then
-        log_info "OPIC config.h already exists."
         return
     fi
     
@@ -84,46 +156,22 @@ generate_opic_config() {
 #ifndef OPIC_CONFIG_H
 #define OPIC_CONFIG_H
 
-/* Define to 1 if you have the <inttypes.h> header file. */
 #define HAVE_INTTYPES_H 1
-
-/* Define to 1 if you have the <limits.h> header file. */
 #define HAVE_LIMITS_H 1
-
-/* Define to 1 if you have the `malloc' function. */
 #define HAVE_MALLOC 1
-
-/* Define to 1 if you have the `memcmp' function. */
 #define HAVE_MEMCMP 1
-
-/* Define to 1 if you have the `mmap' function. */
 #define HAVE_MMAP 1
-
-/* Define to 1 if you have the <stdbool.h> header file. */
 #define HAVE_STDBOOL_H 1
-
-/* Define to 1 if you have the <pthread.h> header file. */
 #define HAVE_PTHREAD_H 1
-
-/* Define to 1 if you have the `pthread' library. */
 #define HAVE_PTHREAD 1
-
-/* Most likely not having log4c */
-/* #undef HAS_LOG4C */
-
-/* Package name */
 #define PACKAGE "opic"
-
-/* Package version */
 #define PACKAGE_VERSION "0.8.0"
-
-/* Version string */
 #define VERSION "0.8.0"
 
 #endif /* OPIC_CONFIG_H */
 EOF
     
-    log_info "OPIC config.h generated."
+    log_ok "OPIC config.h generated"
 }
 
 # ============================================================================
@@ -134,115 +182,48 @@ generate_sparsehash_config() {
     local config_file="$config_dir/sparseconfig.h"
     
     if [ -f "$config_file" ]; then
-        log_info "sparsehash sparseconfig.h already exists."
         return
     fi
     
-    log_info "Generating sparsehash sparseconfig.h..."
+    log_info "Generating sparsehash config..."
     mkdir -p "$config_dir"
     
     cat > "$config_file" << 'EOF'
-/*
- * sparseconfig.h for sparsehash - generated for CMake build on Linux/GCC
- * NOTE: This file is for internal use only.
- *       Do not use these #defines in your own program!
- */
+/* sparseconfig.h for sparsehash */
 
-/* Namespace for Google classes */
 #define GOOGLE_NAMESPACE  ::google
-
-/* the location of the header defining hash functions */
 #define HASH_FUN_H  <functional>
-
-/* the location of <unordered_map> */
 #define HASH_MAP_H  <unordered_map>
-
-/* the namespace of the hash<> function */
 #define HASH_NAMESPACE  std
-
-/* the location of <unordered_set> */
 #define HASH_SET_H  <unordered_set>
-
-/* Define to 1 if you have the <inttypes.h> header file. */
 #define HAVE_INTTYPES_H 1
-
-/* Define to 1 if the system has the type `long long'. */
 #define HAVE_LONG_LONG 1
-
-/* Define to 1 if you have the `memcpy' function. */
 #define HAVE_MEMCPY 1
-
-/* Define to 1 if you have the `memmove' function. */
 #define HAVE_MEMMOVE 1
-
-/* Define to 1 if you have the <memory.h> header file. */
 #define HAVE_MEMORY_H 1
-
-/* define if the compiler implements namespaces */
 #define HAVE_NAMESPACES 1
-
-/* Define if you have POSIX threads libraries and header files. */
 #define HAVE_PTHREAD 1
-
-/* Define to 1 if you have the <stdint.h> header file. */
 #define HAVE_STDINT_H 1
-
-/* Define to 1 if you have the <stdlib.h> header file. */
 #define HAVE_STDLIB_H 1
-
-/* Define to 1 if you have the <strings.h> header file. */
 #define HAVE_STRINGS_H 1
-
-/* Define to 1 if you have the <string.h> header file. */
 #define HAVE_STRING_H 1
-
-/* Define to 1 if you have the <sys/resource.h> header file. */
 #define HAVE_SYS_RESOURCE_H 1
-
-/* Define to 1 if you have the <sys/stat.h> header file. */
 #define HAVE_SYS_STAT_H 1
-
-/* Define to 1 if you have the <sys/time.h> header file. */
 #define HAVE_SYS_TIME_H 1
-
-/* Define to 1 if you have the <sys/types.h> header file. */
 #define HAVE_SYS_TYPES_H 1
-
-/* Define to 1 if you have the <sys/utsname.h> header file. */
 #define HAVE_SYS_UTSNAME_H 1
-
-/* Define to 1 if the system has the type `uint16_t'. */
 #define HAVE_UINT16_T 1
-
-/* Define to 1 if you have the <unistd.h> header file. */
 #define HAVE_UNISTD_H 1
-
-/* define if the compiler supports unordered_{map,set} */
 #define HAVE_UNORDERED_MAP 1
-
-/* Define to 1 if the system has the type `u_int16_t'. */
 #define HAVE_U_INT16_T 1
-
-/* Define to 1 if the system has the type `__uint16'. */
-#undef HAVE___UINT16
-
-/* Define to 1 if you have the ANSI C header files. */
 #define STDC_HEADERS 1
-
-/* The system-provided hash function including the namespace. */
 #define SPARSEHASH_HASH  std::hash
-
-/* The system-provided hash function, in namespace HASH_NAMESPACE. */
 #define SPARSEHASH_HASH_NO_NAMESPACE  hash
-
-/* Stops putting the code inside the Google namespace */
 #define _END_GOOGLE_NAMESPACE_  }
-
-/* Puts following code inside the Google namespace */
 #define _START_GOOGLE_NAMESPACE_  namespace google {
 EOF
     
-    log_info "sparsehash sparseconfig.h generated."
+    log_ok "sparsehash config generated"
 }
 
 # ============================================================================
@@ -251,18 +232,13 @@ EOF
 update_cmake() {
     local cmake_file="$SCRIPT_DIR/CMakeLists.txt"
     
-    # Check if already patched
     if grep -q 'stubs/opic.*config.h' "$cmake_file" 2>/dev/null; then
-        log_info "CMakeLists.txt already patched."
         return
     fi
     
-    log_info "Patching CMakeLists.txt for OPIC config path..."
-    
-    # Replace the opic include directories
-    sed -i 's|target_include_directories(opic PUBLIC|target_include_directories(opic PUBLIC\n    ${CMAKE_SOURCE_DIR}/stubs/opic  # config.h (must be first)|' "$cmake_file"
-    
-    log_info "CMakeLists.txt patched."
+    log_info "Patching CMakeLists.txt..."
+    sed -i 's|target_include_directories(opic PUBLIC|target_include_directories(opic PUBLIC\n    ${CMAKE_SOURCE_DIR}/stubs/opic  # config.h|' "$cmake_file"
+    log_ok "CMakeLists.txt patched"
 }
 
 # ============================================================================
@@ -270,15 +246,21 @@ update_cmake() {
 # ============================================================================
 cmake_build() {
     local build_dir="$SCRIPT_DIR/build"
-    local nproc=$(nproc 2>/dev/null || echo 4)
+    local nproc=$(get_nproc)
     
     log_info "Configuring CMake..."
-    cmake -S "$SCRIPT_DIR" -B "$build_dir" -DCMAKE_BUILD_TYPE=Release
+    cmake -S "$SCRIPT_DIR" -B "$build_dir" \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DCMAKE_EXPORT_COMPILE_COMMANDS=ON \
+        -Wno-dev 2>/dev/null
     
-    log_info "Building with $nproc parallel jobs..."
-    cmake --build "$build_dir" -j"$nproc"
+    local total=$(count_targets "$build_dir")
+    [ "$total" -eq 0 ] && total=100
     
-    log_info "Build completed successfully!"
+    log_info "Building with $nproc jobs..."
+    cmake --build "$build_dir" -j"$nproc" -- 2>&1 | compile_progress "Building" "$total"
+    
+    log_ok "Build complete"
 }
 
 # ============================================================================
@@ -287,13 +269,14 @@ cmake_build() {
 run_tests() {
     log_info "Running tests..."
     "$SCRIPT_DIR/build/hashmap_test"
+    log_ok "Tests passed"
 }
 
 # ============================================================================
 # Main
 # ============================================================================
 main() {
-    log_info "Starting hashmap_bench build process..."
+    log_info "Starting hashmap_bench build..."
     
     init_submodules
     generate_opic_config
@@ -303,11 +286,9 @@ main() {
     run_tests
     
     echo ""
-    log_info "============================================"
-    log_info "Build successful!"
-    log_info "  Benchmark: ./build/hashmap_bench"
-    log_info "  Test:      ./build/hashmap_test"
-    log_info "============================================"
+    log_ok "Build successful!"
+    echo "  Benchmark: ./build/hashmap_bench"
+    echo "  Test:      ./build/hashmap_test"
 }
 
 main "$@"

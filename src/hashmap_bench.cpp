@@ -240,8 +240,13 @@ std::vector<BenchmarkResult> run_all_string_benchmarks(
             "phmap::parallel_flat_hash_map", key_type, keys, "KV: string/uintptr_t"));
     }
 
+    // Print unordered results
+    print_results(results);
+
     // Ordered containers
     std::cout << "\n=== Ordered Containers - String Key (" << key_type << ") ===\n";
+    
+    size_t ordered_start = results.size();
     
     // std::map
     results.push_back(benchmark_string_keys<StdMapWrapper<std::string, uint64_t>>(
@@ -259,7 +264,9 @@ std::vector<BenchmarkResult> run_all_string_benchmarks(
     results.push_back(benchmark_string_keys<FollySortedVectorMapWrapper<std::string, uint64_t>>(
         "folly::sorted_vector_map", key_type, keys, "KV: string/uintptr_t, Ordered"));
     
-    print_results(results);
+    // Print ordered results only
+    print_results(std::vector<BenchmarkResult>(results.begin() + ordered_start, results.end()));
+    
     return results;
 }
 
@@ -325,8 +332,13 @@ std::vector<BenchmarkResult> run_all_int_benchmarks(int num_power, bool run_all_
             "phmap::parallel_flat_hash_map", keys, "KV: int64/uintptr_t"));
     }
 
+    // Print unordered results
+    print_results(results);
+
     // Ordered containers
     std::cout << "\n=== Ordered Containers - Integer Key ===\n";
+    
+    size_t ordered_start = results.size();
     
     // std::map
     results.push_back(benchmark_int_keys<StdMapWrapper<uint64_t, uint64_t>>(
@@ -344,7 +356,9 @@ std::vector<BenchmarkResult> run_all_int_benchmarks(int num_power, bool run_all_
     results.push_back(benchmark_int_keys<FollySortedVectorMapWrapper<uint64_t, uint64_t>>(
         "folly::sorted_vector_map", keys, "KV: int64/uintptr_t, Ordered"));
     
-    print_results(results);
+    // Print ordered results only
+    print_results(std::vector<BenchmarkResult>(results.begin() + ordered_start, results.end()));
+    
     return results;
 }
 
